@@ -11,7 +11,7 @@ public class CloudTextureGenerator : MonoBehaviour
         
         float noiseOffset = Random.Range(0f, 10000f);
         
-        // Многоуровневый Perlin Noise для реалистичных облаков
+
         for (int y = 0; y < resolution; y++)
         {
             for (int x = 0; x < resolution; x++)
@@ -19,13 +19,13 @@ public class CloudTextureGenerator : MonoBehaviour
                 float xCoord = (float)x / resolution * scale + noiseOffset;
                 float yCoord = (float)y / resolution * scale + noiseOffset;
                 
-                // Octave-based fractal Brownian motion (FBM)
+
                 float value = 0f;
                 float amplitude = 1f;
                 float frequency = 1f;
                 float maxValue = 0f;
                 
-                // Несколько октав для деталей
+
                 for (int i = 0; i < 4; i++)
                 {
                     value += amplitude * Mathf.PerlinNoise(xCoord * frequency, yCoord * frequency);
@@ -36,10 +36,10 @@ public class CloudTextureGenerator : MonoBehaviour
                 
                 value /= maxValue;
                 
-                // Контрастность - облако выглядит более пушистым
+
                 value = Mathf.Pow(value, 0.8f);
                 
-                // Мягкие края от центра текстуры
+
                 float centerX = (float)x / resolution - 0.5f;
                 float centerY = (float)y / resolution - 0.5f;
                 float distFromCenter = Mathf.Sqrt(centerX * centerX + centerY * centerY);

@@ -8,12 +8,12 @@ public class VolumetricCloudManager : MonoBehaviour
     
     [Header("Generation Settings")]
     [SerializeField] private int numberOfClouds = 50;
-    [SerializeField] private float territoryRadius = 500f;  // Радиус территории
-    [SerializeField] private Vector3 territoryCenter = Vector3.zero;  // Центр территории
+    [SerializeField] private float territoryRadius = 500f;
+    [SerializeField] private Vector3 territoryCenter = Vector3.zero;
     
     [Header("Height Settings")]
-    [SerializeField] private float minHeight = 50f;  // Минимальная высота облаков
-    [SerializeField] private float maxHeight = 200f;  // Максимальная высота облаков
+    [SerializeField] private float minHeight = 50f;
+    [SerializeField] private float maxHeight = 200f;
     
     [Header("Wind")]
     [SerializeField] private Vector3 windDirection = Vector3.right;
@@ -27,10 +27,10 @@ public class VolumetricCloudManager : MonoBehaviour
         if (cloudsContainer == null)
             cloudsContainer = transform;
         
-        // Находим уже созданные облака
+
         allClouds.AddRange(GetComponentsInChildren<VolumetricCloud>());
         
-        // Если облаков нет - генерируем новые
+
         if (allClouds.Count == 0)
         {
             GenerateClouds();
@@ -38,22 +38,22 @@ public class VolumetricCloudManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Генерирует облака случайно в пределах территории
-    /// </summary>
+
+
+
     private void GenerateClouds()
     {
         for (int i = 0; i < numberOfClouds; i++)
         {
-            // === РАНДОМНАЯ ПОЗИЦИЯ В ПРЕДЕЛАХ ТЕРРИТОРИИ ===
+
             Vector3 randomPosition = GetRandomPositionInTerritory();
             
-            // Создаём облако
+
             VolumetricCloud cloud = CreateCloud(randomPosition);
             
             if (cloud != null)
             {
-                // Случайная скорость ветра для каждого облака (для более живого эффекта)
+
                 float randomWindSpeed = Random.Range(windSpeed * 0.5f, windSpeed * 1.5f);
                 cloud.SetWind(GetRandomWindDirection(), randomWindSpeed);
             }
@@ -62,36 +62,36 @@ public class VolumetricCloudManager : MonoBehaviour
         Debug.Log($"✅ Сгенерировано {allClouds.Count} облаков");
     }
     
-    /// <summary>
-    /// Получает случайную позицию внутри территории
-    /// </summary>
+
+
+
     private Vector3 GetRandomPositionInTerritory()
     {
-        // Случайная позиция в круге (X, Z)
+
         float randomAngle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
         float randomDistance = Random.Range(0f, territoryRadius);
         
         float x = territoryCenter.x + Mathf.Cos(randomAngle) * randomDistance;
         float z = territoryCenter.z + Mathf.Sin(randomAngle) * randomDistance;
         
-        // Случайная высота (Y)
+
         float y = territoryCenter.y + Random.Range(minHeight, maxHeight);
         
         return new Vector3(x, y, z);
     }
     
-    /// <summary>
-    /// Получает случайное направление ветра
-    /// </summary>
+
+
+
     private Vector3 GetRandomWindDirection()
     {
         float randomAngle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
         return new Vector3(Mathf.Cos(randomAngle), 0, Mathf.Sin(randomAngle)).normalized;
     }
     
-    /// <summary>
-    /// Создаёт новое облако
-    /// </summary>
+
+
+
     public VolumetricCloud CreateCloud(Vector3 position, float density = 1f)
     {
         GameObject cloudObj = Instantiate(cloudPrefab, position, Quaternion.identity, cloudsContainer);
@@ -109,71 +109,71 @@ public class VolumetricCloudManager : MonoBehaviour
         return cloud;
     }
     
-    /// <summary>
-    /// Переустановить глобальный ветер
-    /// </summary>
+
+
+
     public void SetGlobalWind(Vector3 direction, float speed)
     {
         windDirection = direction.normalized;
         windSpeed = speed;
         
-        // Применяем ко всем облакам
+
         foreach (VolumetricCloud cloud in allClouds)
         {
             cloud.SetWind(windDirection, windSpeed);
         }
     }
     
-    /// <summary>
-    /// Получить все облака
-    /// </summary>
+
+
+
     public List<VolumetricCloud> GetAllClouds() => allClouds;
     
-    /// <summary>
-    /// Получить количество облаков
-    /// </summary>
+
+
+
     public int GetCloudCount() => allClouds.Count;
     
-    /// <summary>
-    /// Очистить все облака и переустановить
-    /// </summary>
+
+
+
     public void RegenerateClouds()
     {
-        // Удаляем старые облака
+
         foreach (VolumetricCloud cloud in allClouds)
         {
             Destroy(cloud.gameObject);
         }
         allClouds.Clear();
         
-        // Генерируем новые
+
         GenerateClouds();
     }
     
-    /// <summary>
-    /// Визуализация территории в сцене (для отладки)
-    /// </summary>
+
+
+
     private void OnDrawGizmos()
     {
-        // Рисуем окружность территории
-        Gizmos.color = new Color(0, 1, 1, 0.3f);  // Голубой цвет
+
+        Gizmos.color = new Color(0, 1, 1, 0.3f);
         DrawCircle(territoryCenter, territoryRadius, 64);
         
-        // Центр территории
+
         Gizmos.color = Color.cyan;
         Gizmos.DrawSphere(territoryCenter, 5f);
         
-        // Высота облаков
-        Gizmos.color = new Color(0, 1, 0, 0.3f);  // Зелёный цвет
+
+        Gizmos.color = new Color(0, 1, 0, 0.3f);
         Vector3 minHeightPos = territoryCenter + Vector3.up * minHeight;
         Vector3 maxHeightPos = territoryCenter + Vector3.up * maxHeight;
         DrawCircle(minHeightPos, territoryRadius, 64);
         DrawCircle(maxHeightPos, territoryRadius, 64);
     }
     
-    /// <summary>
-    /// Вспомогательный метод для рисования окружности
-    /// </summary>
+
+
+
     private void DrawCircle(Vector3 center, float radius, int segments)
     {
         float angle = 0f;

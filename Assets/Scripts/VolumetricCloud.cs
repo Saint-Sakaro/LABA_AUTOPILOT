@@ -29,7 +29,7 @@ public class VolumetricCloud : MonoBehaviour
         if (cloudMaterial == null)
             cloudMaterial = cloudParticles.GetComponent<ParticleSystemRenderer>().material;
         
-        // Генерируем текстуру
+
         if (cloudMaterial.mainTexture == null)
         {
             Texture2D cloudTexture = CloudTextureGenerator.GenerateCloudTexture(
@@ -40,28 +40,28 @@ public class VolumetricCloud : MonoBehaviour
             cloudMaterial.mainTexture = cloudTexture;
         }
         
-        // === КЛЮЧЕВОЕ: Отключаем Velocity Over Lifetime ===
+
         DisableVelocityOverLifetime();
     }
     
-    /// <summary>
-    /// Отключаем Velocity Over Lifetime модуль (он конфликтует с движением)
-    /// </summary>
+
+
+
     private void DisableVelocityOverLifetime()
     {
         var velocity = cloudParticles.velocityOverLifetime;
-        velocity.enabled = false;  // ОТКЛЮЧАЕМ!
+        velocity.enabled = false;
     }
     
     private void Update()
     {
-        // Пульсация
+
         UpdatePulsation();
         
-        // === ПРОСТОЕ ДВИЖЕНИЕ БЕЗ УСЛОВИЙ ===
+
         transform.position += windDirection.normalized * windSpeed * Time.deltaTime;
         
-        // Плотность
+
         cloudMaterial.SetFloat("_Density", density);
     }
     
@@ -109,9 +109,9 @@ public class VolumetricCloud : MonoBehaviour
         pulsateSpeed = Mathf.Max(0f, speed);
     }
 
-    /// <summary>
-    /// Установить направление и скорость ветра
-    /// </summary>
+
+
+
     public void SetWind(Vector3 direction, float speed)
     {
         windDirection = direction.normalized;

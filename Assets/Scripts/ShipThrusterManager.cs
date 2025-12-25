@@ -1,4 +1,4 @@
-// 2. ShipThrusterManager.cs (Управление всеми четырьмя двигателями)
+
 
 using UnityEngine;
 using System.Collections.Generic;
@@ -19,7 +19,7 @@ public class ShipThrusterManager : MonoBehaviour
     
     private void Start()
     {
-        // Автоматически находим все EngineFireController на дочерних объектах
+
         if (engines.Count == 0)
         {
             engines.AddRange(GetComponentsInChildren<EngineFireController>());
@@ -45,9 +45,9 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Устанавливает одинаковую мощность для всех двигателей
-    /// </summary>
+
+
+
     public void SetGlobalThrust(float thrustPercent)
     {
         globalThrust = Mathf.Clamp01(thrustPercent);
@@ -58,9 +58,9 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Устанавливает мощность для конкретного двигателя (по индексу)
-    /// </summary>
+
+
+
     public void SetEngineThrust(int engineIndex, float thrustPercent)
     {
         if (engineIndex >= 0 && engineIndex < engines.Count)
@@ -69,10 +69,10 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Устанавливает индивидуальную мощность для четырёх двигателей
-    /// Полезно для наклона/поворота корабля
-    /// </summary>
+
+
+
+
     public void SetIndividualThrust(float frontLeft, float frontRight, float backLeft, float backRight)
     {
         if (engines.Count >= 4)
@@ -84,17 +84,17 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получить текущую глобальную мощность
-    /// </summary>
+
+
+
     public float GetGlobalThrust()
     {
         return globalThrust;
     }
     
-    /// <summary>
-    /// Получить мощность конкретного двигателя
-    /// </summary>
+
+
+
     public float GetEngineThrust(int engineIndex)
     {
         if (engineIndex >= 0 && engineIndex < engines.Count)
