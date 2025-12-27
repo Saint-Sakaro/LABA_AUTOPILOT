@@ -632,22 +632,20 @@ public class ShipController : MonoBehaviour
 
     private void SelectEngine(int engineIndex)
     {
-        if (engineIndex < 0 || engineIndex >= engines.Count)
+        if (engineIndex < 0)
+        {
+            Debug.LogWarning($"ShipController: Некорректный индекс двигателя: {engineIndex}");
+            return;
+        }
+        if (engineIndex >= engines.Count)
         {
             Debug.LogWarning($"ShipController: Некорректный индекс двигателя: {engineIndex}");
             return;
         }
 
-
         selectedEngines.Clear();
         selectedEngines.Add(engineIndex);
-
-
-
         currentThrust = engineThrusts[engineIndex];
-
-
-
 
         for (int i = 0; i < engines.Count; i++)
         {
@@ -657,10 +655,7 @@ public class ShipController : MonoBehaviour
             }
         }
 
-
         currentMovementDirection = MovementDirection.None;
-
-
         UpdateEngineVisuals();
     }
 
@@ -675,38 +670,34 @@ public class ShipController : MonoBehaviour
             selectedEngines.Add(i);
         }
 
-
-        float averageThrust = 0f;
-        bool hasAnyThrust = false;
+        float sum = 0f;
+        bool hasThrust = false;
         for (int i = 0; i < engines.Count; i++)
         {
-            averageThrust += engineThrusts[i];
+            sum = sum + engineThrusts[i];
             if (engineThrusts[i] > 0.01f)
             {
-                hasAnyThrust = true;
+                hasThrust = true;
             }
         }
 
+        float avg = 0f;
         if (engines.Count > 0)
         {
-            averageThrust /= engines.Count;
+            avg = sum / engines.Count;
         }
 
-
-        if (!hasAnyThrust)
+        if (hasThrust == false)
         {
-            averageThrust = 0f;
+            avg = 0f;
             currentThrust = 0f;
         }
         else
         {
-            currentThrust = averageThrust;
+            currentThrust = avg;
         }
 
-
         currentMovementDirection = MovementDirection.None;
-
-
         UpdateEngineVisuals();
     }
 
@@ -720,7 +711,8 @@ public class ShipController : MonoBehaviour
             currentMovementDirection = MovementDirection.ForwardBackward;
             Debug.Log("Выбрано направление: Вперед/Назад (X)");
         }
-        else if (Input.GetKeyDown(selectLeftRight))
+        
+        if (Input.GetKeyDown(selectLeftRight))
         {
             currentMovementDirection = MovementDirection.LeftRight;
             Debug.Log("Выбрано направление: Влево/Вправо (Z)");
@@ -1020,20 +1012,49 @@ public class ShipController : MonoBehaviour
     {
         float targetThrust = currentThrust;
 
-
-        if (Input.GetKey(KeyCode.W))
+        if (Input.GetKey(KeyCode.W) == true)
         {
-            targetThrust = Mathf.Clamp01(currentThrust + thrustChangeSpeed * Time.deltaTime);
+            float newThrust = currentThrust + thrustChangeSpeed * Time.deltaTime;
+            if (newThrust > 1f)
+            {
+                targetThrust = 1f;
+            }
+            else if (newThrust < 0f)
+            {
+                targetThrust = 0f;
+            }
+            else
+            {
+                targetThrust = newThrust;
+            }
+        }
+        else if (Input.GetKey(KeyCode.S) == true)
+        {
+            float newThrust = currentThrust - thrustChangeSpeed * Time.deltaTime;
+            if (newThrust > 1f)
+            {
+                targetThrust = 1f;
+            }
+            else if (newThrust < 0f)
+            {
+                targetThrust = 0f;
+            }
+            else
+            {
+                targetThrust = newThrust;
+            }
         }
 
-        else if (Input.GetKey(KeyCode.S))
+        float lerpFactor = Time.deltaTime * thrustChangeSpeed;
+        currentThrust = currentThrust + (targetThrust - currentThrust) * lerpFactor;
+        if (currentThrust > 1f)
         {
-            targetThrust = Mathf.Clamp01(currentThrust - thrustChangeSpeed * Time.deltaTime);
+            currentThrust = 1f;
         }
-
-
-        currentThrust = Mathf.Lerp(currentThrust, targetThrust, Time.deltaTime * thrustChangeSpeed);
-
+        if (currentThrust < 0f)
+        {
+            currentThrust = 0f;
+        }
 
         UpdateEngineVisuals();
     }
@@ -1044,29 +1065,33 @@ public class ShipController : MonoBehaviour
 
     private void UpdateEngineVisuals()
     {
-
         for (int i = 0; i < engines.Count; i++)
         {
-            if (engines[i] == null) continue;
-
-            if (selectedEngines.Contains(i))
+            if (engines[i] == null)
             {
+                continue;
+            }
 
+            bool isSelected = selectedEngines.Contains(i);
+            if (isSelected)
+            {
                 engineThrusts[i] = currentThrust;
                 engines[i].SetThrust(currentThrust);
             }
             else
             {
-
-
                 engines[i].SetThrust(engineThrusts[i]);
             }
         }
 
-
         if (thrusterManager != null)
         {
-            for (int i = 0; i < engines.Count && i < 4; i++)
+            int maxEngines = engines.Count;
+            if (maxEngines > 4)
+            {
+                maxEngines = 4;
+            }
+            for (int i = 0; i < maxEngines; i++)
             {
                 thrusterManager.SetEngineThrust(i, engineThrusts[i]);
             }
@@ -1079,85 +1104,133 @@ public class ShipController : MonoBehaviour
 
     private void ApplyThrustFromEngines()
     {
-        if (shipRigidbody == null || engines.Count == 0) return;
+        if (shipRigidbody == null)
+        {
+            return;
+        }
+        
+        if (engines.Count == 0)
+        {
+            return;
+        }
 
-
-        Vector3 totalForce = Vector3.zero;
-        Vector3 totalTorque = Vector3.zero;
+        Vector3 totalForce = new Vector3(0f, 0f, 0f);
+        Vector3 totalTorque = new Vector3(0f, 0f, 0f);
         Vector3 centerOfMass = shipRigidbody.worldCenterOfMass;
 
-
-        bool enginesTilted = desiredMovementDirection.magnitude > 0.01f;
-
+        float movementX = desiredMovementDirection.x;
+        float movementY = desiredMovementDirection.y;
+        float movementMagnitude = Mathf.Sqrt(movementX * movementX + movementY * movementY);
+        bool enginesTilted = false;
+        if (movementMagnitude > 0.01f)
+        {
+            enginesTilted = true;
+        }
+        else
+        {
+            enginesTilted = false;
+        }
 
         for (int i = 0; i < engines.Count; i++)
         {
             EngineFireController engine = engines[i];
-            if (engine == null) continue;
-
+            if (engine == null)
+            {
+                continue;
+            }
 
             float engineThrust = engineThrusts[i];
 
+            if (engineThrust < 0.01f)
+            {
+                continue;
+            }
 
-            if (engineThrust < 0.01f) continue;
-
-
-
-
-            Vector3 engineDirection = -engine.transform.forward;
-
+            Vector3 engineForward = engine.transform.forward;
+            Vector3 engineDirection = new Vector3(-engineForward.x, -engineForward.y, -engineForward.z);
 
             Vector3 enginePosition = engine.transform.position;
 
-
             float thrustForce = maxThrustForce * engineThrust;
 
+            Vector3 force = new Vector3(
+                engineDirection.x * thrustForce,
+                engineDirection.y * thrustForce,
+                engineDirection.z * thrustForce
+            );
 
-            Vector3 force = engineDirection * thrustForce;
-
-
-
-            if (applyForceToCenter || enginesTilted)
+            if (applyForceToCenter == true)
             {
-
-                totalForce += force;
+                totalForce = new Vector3(
+                    totalForce.x + force.x,
+                    totalForce.y + force.y,
+                    totalForce.z + force.z
+                );
+            }
+            else if (enginesTilted == true)
+            {
+                totalForce = new Vector3(
+                    totalForce.x + force.x,
+                    totalForce.y + force.y,
+                    totalForce.z + force.z
+                );
             }
             else
             {
-
                 shipRigidbody.AddForceAtPosition(force, enginePosition, ForceMode.Force);
 
-
-                Vector3 leverArm = enginePosition - centerOfMass;
+                Vector3 leverArm = new Vector3(
+                    enginePosition.x - centerOfMass.x,
+                    enginePosition.y - centerOfMass.y,
+                    enginePosition.z - centerOfMass.z
+                );
                 Vector3 torque = Vector3.Cross(leverArm, force);
-                totalTorque += torque;
+                totalTorque = new Vector3(
+                    totalTorque.x + torque.x,
+                    totalTorque.y + torque.y,
+                    totalTorque.z + torque.z
+                );
 
-
-                if (showDebugInfo)
+                if (showDebugInfo == true)
                 {
+                    float leverArmLength = Mathf.Sqrt(leverArm.x * leverArm.x + leverArm.y * leverArm.y + leverArm.z * leverArm.z);
+                    float torqueLength = Mathf.Sqrt(torque.x * torque.x + torque.y * torque.y + torque.z * torque.z);
                     Debug.Log($"Engine {i}: Thrust={engineThrust:F2}, Force={thrustForce:F1}N, " +
-                              $"LeverArm={leverArm.magnitude:F2}m, Torque={torque.magnitude:F1}Nm");
+                              $"LeverArm={leverArmLength:F2}m, Torque={torqueLength:F1}Nm");
                 }
             }
         }
 
-
-        if ((applyForceToCenter || enginesTilted) && totalForce.magnitude > 0.01f)
+        if (applyForceToCenter == true || enginesTilted == true)
         {
-            shipRigidbody.AddForce(totalForce, ForceMode.Force);
-
-
-            if (showDebugInfo && Time.frameCount % 60 == 0)
+            float totalForceLength = Mathf.Sqrt(totalForce.x * totalForce.x + totalForce.y * totalForce.y + totalForce.z * totalForce.z);
+            if (totalForceLength > 0.01f)
             {
-                Vector3 totalForceLocal = transform.InverseTransformDirection(totalForce);
-                Debug.Log($"Total Force Applied: {totalForce.magnitude:F1}N, Local: ({totalForceLocal.x:F2}, {totalForceLocal.y:F2}, {totalForceLocal.z:F2})");
+                shipRigidbody.AddForce(totalForce, ForceMode.Force);
+
+                if (showDebugInfo == true)
+                {
+                    if (Time.frameCount % 60 == 0)
+                    {
+                        Vector3 totalForceLocal = transform.InverseTransformDirection(totalForce);
+                        Debug.Log($"Total Force Applied: {totalForceLength:F1}N, Local: ({totalForceLocal.x:F2}, {totalForceLocal.y:F2}, {totalForceLocal.z:F2})");
+                    }
+                }
             }
         }
 
-
-        if (showDebugInfo && totalTorque.magnitude > 0.1f)
+        if (showDebugInfo == true)
         {
-            Debug.Log($"Total Torque: {totalTorque.magnitude:F1}Nm, Direction: {totalTorque.normalized}");
+            float totalTorqueLength = Mathf.Sqrt(totalTorque.x * totalTorque.x + totalTorque.y * totalTorque.y + totalTorque.z * totalTorque.z);
+            if (totalTorqueLength > 0.1f)
+            {
+                Vector3 normalizedTorque = new Vector3(
+                    totalTorque.x / totalTorqueLength,
+                    totalTorque.y / totalTorqueLength,
+                    totalTorque.z / totalTorqueLength
+                );
+                Debug.Log($"Total Torque: {totalTorqueLength:F1}Nm, Direction: {normalizedTorque}");
+            }
         }
     }
 
@@ -1166,11 +1239,21 @@ public class ShipController : MonoBehaviour
 
     private void DetectEnvironmentMode()
     {
-        if (shipRigidbody == null) return;
+        if (shipRigidbody == null)
+        {
+            return;
+        }
 
         float currentHeight = transform.position.y;
-        EnvironmentMode newMode = currentHeight > atmosphereHeight ? EnvironmentMode.Space : EnvironmentMode.Atmosphere;
-
+        EnvironmentMode newMode = EnvironmentMode.Space;
+        if (currentHeight > atmosphereHeight)
+        {
+            newMode = EnvironmentMode.Space;
+        }
+        else
+        {
+            newMode = EnvironmentMode.Atmosphere;
+        }
 
         if (newMode != currentEnvironment)
         {
@@ -1209,34 +1292,57 @@ public class ShipController : MonoBehaviour
 
     private void ApplyGravity()
     {
-        if (shipRigidbody == null) return;
+        if (shipRigidbody == null)
+        {
+            return;
+        }
 
-
-        Vector3 gravityForce = gravityDirection.normalized * gravityStrength * shipRigidbody.mass;
-
+        float gravityDirLength = Mathf.Sqrt(gravityDirection.x * gravityDirection.x + gravityDirection.y * gravityDirection.y + gravityDirection.z * gravityDirection.z);
+        Vector3 normalizedGravityDir = new Vector3(
+            gravityDirection.x / gravityDirLength,
+            gravityDirection.y / gravityDirLength,
+            gravityDirection.z / gravityDirLength
+        );
+        
+        float forceMagnitude = gravityStrength * shipRigidbody.mass;
+        Vector3 gravityForce = new Vector3(
+            normalizedGravityDir.x * forceMagnitude,
+            normalizedGravityDir.y * forceMagnitude,
+            normalizedGravityDir.z * forceMagnitude
+        );
 
         Vector3 centerOfMassWorld = shipRigidbody.worldCenterOfMass;
 
-
-
         shipRigidbody.AddForceAtPosition(gravityForce, centerOfMassWorld, ForceMode.Force);
 
-
-        if (showDebugInfo && Time.frameCount % 60 == 0)
+        if (showDebugInfo == true)
         {
-            Vector3 centerOfMassLocal = shipRigidbody.centerOfMass;
-            Vector3 geometricCenter = transform.position;
-            Vector3 offset = centerOfMassWorld - geometricCenter;
-
-            if (offset.magnitude > 0.01f)
+            if (Time.frameCount % 60 == 0)
             {
+                Vector3 centerOfMassLocal = shipRigidbody.centerOfMass;
+                Vector3 geometricCenter = transform.position;
+                Vector3 offset = new Vector3(
+                    centerOfMassWorld.x - geometricCenter.x,
+                    centerOfMassWorld.y - geometricCenter.y,
+                    centerOfMassWorld.z - geometricCenter.z
+                );
 
-                Vector3 leverArm = centerOfMassWorld - geometricCenter;
-                Vector3 torque = Vector3.Cross(leverArm, gravityForce);
+                float offsetLength = Mathf.Sqrt(offset.x * offset.x + offset.y * offset.y + offset.z * offset.z);
+                if (offsetLength > 0.01f)
+                {
+                    Vector3 leverArm = new Vector3(
+                        centerOfMassWorld.x - geometricCenter.x,
+                        centerOfMassWorld.y - geometricCenter.y,
+                        centerOfMassWorld.z - geometricCenter.z
+                    );
+                    Vector3 torque = Vector3.Cross(leverArm, gravityForce);
 
-                Debug.Log($"Gravity: Force={gravityForce.magnitude:F1}N, " +
-                         $"CenterOfMass offset={offset.magnitude:F2}m, " +
-                         $"Torque={torque.magnitude:F1}Nm");
+                    float gravityForceLength = Mathf.Sqrt(gravityForce.x * gravityForce.x + gravityForce.y * gravityForce.y + gravityForce.z * gravityForce.z);
+                    float torqueLength = Mathf.Sqrt(torque.x * torque.x + torque.y * torque.y + torque.z * torque.z);
+                    Debug.Log($"Gravity: Force={gravityForceLength:F1}N, " +
+                             $"CenterOfMass offset={offsetLength:F2}m, " +
+                             $"Torque={torqueLength:F1}Nm");
+                }
             }
         }
     }
@@ -1249,30 +1355,37 @@ public class ShipController : MonoBehaviour
     {
         if (shipRigidbody == null)
         {
-            if (showDebugInfo && Time.frameCount % 300 == 0)
+            if (showDebugInfo == true)
             {
-                Debug.LogWarning("ApplyWind: shipRigidbody is null!");
+                if (Time.frameCount % 300 == 0)
+                {
+                    Debug.LogWarning("ApplyWind: shipRigidbody is null!");
+                }
             }
             return;
         }
 
+        float clampedWindStrength = windStrength;
+        if (windStrength < 0f)
+        {
+            clampedWindStrength = 0f;
+        }
+        if (windStrength > maxWindStrength)
+        {
+            clampedWindStrength = maxWindStrength;
+        }
 
-        float clampedWindStrength = Mathf.Clamp(windStrength, 0f, maxWindStrength);
+        if (clampedWindStrength < 0.1f)
+        {
+            return;
+        }
 
-
-        if (clampedWindStrength < 0.1f) return;
-
-
-
-
-        float horizontalRad = windDirectionHorizontalAngle * Mathf.Deg2Rad;
-        float verticalRad = windDirectionVerticalAngle * Mathf.Deg2Rad;
-
-
+        float degToRad = 0.0174532925f;
+        float horizontalRad = windDirectionHorizontalAngle * degToRad;
+        float verticalRad = windDirectionVerticalAngle * degToRad;
 
         float horizontalX = Mathf.Sin(horizontalRad);
         float horizontalZ = Mathf.Cos(horizontalRad);
-
 
         float horizontalLength = Mathf.Cos(verticalRad);
         float verticalY = Mathf.Sin(verticalRad);
@@ -1281,28 +1394,38 @@ public class ShipController : MonoBehaviour
             horizontalX * horizontalLength,
             verticalY,
             horizontalZ * horizontalLength
-        ).normalized;
-
+        );
+        
+        float windDirLength = Mathf.Sqrt(windDirectionLocal.x * windDirectionLocal.x + windDirectionLocal.y * windDirectionLocal.y + windDirectionLocal.z * windDirectionLocal.z);
+        windDirectionLocal = new Vector3(
+            windDirectionLocal.x / windDirLength,
+            windDirectionLocal.y / windDirLength,
+            windDirectionLocal.z / windDirLength
+        );
 
         Vector3 windDirectionWorld = transform.TransformDirection(windDirectionLocal);
 
-
-        Vector3 windForce = windDirectionWorld * clampedWindStrength;
-
-
+        Vector3 windForce = new Vector3(
+            windDirectionWorld.x * clampedWindStrength,
+            windDirectionWorld.y * clampedWindStrength,
+            windDirectionWorld.z * clampedWindStrength
+        );
 
         Vector3 centerOfMassWorld = shipRigidbody.worldCenterOfMass;
         shipRigidbody.AddForceAtPosition(windForce, centerOfMassWorld, ForceMode.Force);
 
-
-        if (showDebugInfo && Time.frameCount % 60 == 0)
+        if (showDebugInfo == true)
         {
-            Debug.Log($"Wind: Strength={clampedWindStrength:F1}N, " +
-                     $"Horizontal={windDirectionHorizontalAngle:F1}°, " +
-                     $"Vertical={windDirectionVerticalAngle:F1}°, " +
-                     $"Force={windForce.magnitude:F1}N, " +
-                     $"Direction Local={windDirectionLocal}, " +
-                     $"Direction World={windDirectionWorld}");
+            if (Time.frameCount % 60 == 0)
+            {
+                float windForceLength = Mathf.Sqrt(windForce.x * windForce.x + windForce.y * windForce.y + windForce.z * windForce.z);
+                Debug.Log($"Wind: Strength={clampedWindStrength:F1}N, " +
+                         $"Horizontal={windDirectionHorizontalAngle:F1}°, " +
+                         $"Vertical={windDirectionVerticalAngle:F1}°, " +
+                         $"Force={windForceLength:F1}N, " +
+                         $"Direction Local={windDirectionLocal}, " +
+                         $"Direction World={windDirectionWorld}");
+            }
         }
     }
 
@@ -1311,36 +1434,53 @@ public class ShipController : MonoBehaviour
 
     private void ApplyStabilization()
     {
-        if (shipRigidbody == null) return;
-
+        if (shipRigidbody == null)
+        {
+            return;
+        }
 
         Vector3 angularVelocity = shipRigidbody.angularVelocity;
 
-
-
-        if (angularVelocity.magnitude < 0.01f) return;
-
-
+        float angularVelLength = Mathf.Sqrt(angularVelocity.x * angularVelocity.x + angularVelocity.y * angularVelocity.y + angularVelocity.z * angularVelocity.z);
+        if (angularVelLength < 0.01f)
+        {
+            return;
+        }
 
         float totalThrust = 0f;
         for (int i = 0; i < engineThrusts.Length; i++)
         {
-            totalThrust += engineThrusts[i];
+            totalThrust = totalThrust + engineThrusts[i];
         }
 
+        float stabilizationMultiplier = 1f;
+        if (totalThrust > 0.01f)
+        {
+            stabilizationMultiplier = 1f;
+        }
+        else
+        {
+            stabilizationMultiplier = 0.3f;
+        }
 
-        float stabilizationMultiplier = totalThrust > 0.01f ? 1f : 0.3f;
-
-
-
-        float dampingFactor = 1f + angularVelocity.magnitude * 2f;
-        Vector3 stabilizationTorque = -angularVelocity * stabilizationStrength * dampingFactor * stabilizationMultiplier;
+        float dampingFactor = 1f + angularVelLength * 2f;
+        Vector3 stabilizationTorque = new Vector3(
+            -angularVelocity.x * stabilizationStrength * dampingFactor * stabilizationMultiplier,
+            -angularVelocity.y * stabilizationStrength * dampingFactor * stabilizationMultiplier,
+            -angularVelocity.z * stabilizationStrength * dampingFactor * stabilizationMultiplier
+        );
         shipRigidbody.AddTorque(stabilizationTorque, ForceMode.Force);
 
-
-        if (showDebugInfo && Time.frameCount % 60 == 0 && angularVelocity.magnitude > 0.01f)
+        if (showDebugInfo == true)
         {
-            Debug.Log($"Stabilization: AngularVel={angularVelocity.magnitude:F4}, TotalThrust={totalThrust:F2}, Multiplier={stabilizationMultiplier:F2}, Torque={stabilizationTorque.magnitude:F2}Nm");
+            if (Time.frameCount % 60 == 0)
+            {
+                if (angularVelLength > 0.01f)
+                {
+                    float stabilizationTorqueLength = Mathf.Sqrt(stabilizationTorque.x * stabilizationTorque.x + stabilizationTorque.y * stabilizationTorque.y + stabilizationTorque.z * stabilizationTorque.z);
+                    Debug.Log($"Stabilization: AngularVel={angularVelLength:F4}, TotalThrust={totalThrust:F2}, Multiplier={stabilizationMultiplier:F2}, Torque={stabilizationTorqueLength:F2}Nm");
+                }
+            }
         }
     }
 
@@ -1349,8 +1489,13 @@ public class ShipController : MonoBehaviour
 
     public float GetSpeed()
     {
-        if (shipRigidbody == null) return 0f;
-        return shipRigidbody.linearVelocity.magnitude;
+        if (shipRigidbody == null)
+        {
+            return 0f;
+        }
+        Vector3 velocity = shipRigidbody.linearVelocity;
+        float speed = Mathf.Sqrt(velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z);
+        return speed;
     }
 
 
@@ -1387,11 +1532,19 @@ public class ShipController : MonoBehaviour
 
     private void UpdateCenterOfMass()
     {
-        if (shipRigidbody == null) return;
+        if (shipRigidbody == null)
+        {
+            return;
+        }
 
-
-        centerOfMassOffsetX = Mathf.Clamp(centerOfMassOffsetX, -maxCenterOfMassOffset, maxCenterOfMassOffset);
-
+        if (centerOfMassOffsetX > maxCenterOfMassOffset)
+        {
+            centerOfMassOffsetX = maxCenterOfMassOffset;
+        }
+        if (centerOfMassOffsetX < -maxCenterOfMassOffset)
+        {
+            centerOfMassOffsetX = -maxCenterOfMassOffset;
+        }
 
         shipRigidbody.centerOfMass = new Vector3(centerOfMassOffsetX, 0f, 0f);
     }
@@ -1402,7 +1555,18 @@ public class ShipController : MonoBehaviour
 
     public void SetCenterOfMassOffset(float offset)
     {
-        centerOfMassOffsetX = Mathf.Clamp(offset, -maxCenterOfMassOffset, maxCenterOfMassOffset);
+        if (offset > maxCenterOfMassOffset)
+        {
+            centerOfMassOffsetX = maxCenterOfMassOffset;
+        }
+        else if (offset < -maxCenterOfMassOffset)
+        {
+            centerOfMassOffsetX = -maxCenterOfMassOffset;
+        }
+        else
+        {
+            centerOfMassOffsetX = offset;
+        }
         UpdateCenterOfMass();
     }
 
@@ -1429,24 +1593,39 @@ public class ShipController : MonoBehaviour
 
     public void SetWindStrength(float strength)
     {
-        windStrength = Mathf.Clamp(strength, 0f, maxWindStrength);
-
-
-        if (windStrength > 0.1f && !useWind)
+        if (strength < 0f)
         {
-            useWind = true;
-            if (showDebugInfo)
-            {
-                Debug.Log($"Wind автоматически включен (сила = {windStrength:F1}N)");
-            }
+            windStrength = 0f;
+        }
+        else if (strength > maxWindStrength)
+        {
+            windStrength = maxWindStrength;
+        }
+        else
+        {
+            windStrength = strength;
         }
 
-        else if (windStrength < 0.1f && useWind)
+        if (windStrength > 0.1f)
         {
-            useWind = false;
-            if (showDebugInfo)
+            if (useWind == false)
             {
-                Debug.Log("Wind автоматически выключен (сила = 0)");
+                useWind = true;
+                if (showDebugInfo)
+                {
+                    Debug.Log($"Wind автоматически включен (сила = {windStrength:F1}N)");
+                }
+            }
+        }
+        else
+        {
+            if (useWind == true)
+            {
+                useWind = false;
+                if (showDebugInfo)
+                {
+                    Debug.Log("Wind автоматически выключен (сила = 0)");
+                }
             }
         }
     }
@@ -1473,9 +1652,11 @@ public class ShipController : MonoBehaviour
 
     public void SetWindDirectionHorizontal(float angle)
     {
-
         windDirectionHorizontalAngle = angle % 360f;
-        if (windDirectionHorizontalAngle < 0f) windDirectionHorizontalAngle += 360f;
+        if (windDirectionHorizontalAngle < 0f)
+        {
+            windDirectionHorizontalAngle = windDirectionHorizontalAngle + 360f;
+        }
     }
 
 

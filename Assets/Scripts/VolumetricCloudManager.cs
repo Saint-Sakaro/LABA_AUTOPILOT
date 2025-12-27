@@ -19,6 +19,11 @@ public class VolumetricCloudManager : MonoBehaviour
     [SerializeField] private Vector3 windDirection = Vector3.right;
     [SerializeField] private float windSpeed = 0.5f;
     
+    [Header("Ship Wind Connection")]
+    [SerializeField] private ShipController shipController;
+    [SerializeField] private bool useShipWind = true;
+    [SerializeField] private float windToSpeedMultiplier = 0.01f;
+    
     private List<VolumetricCloud> allClouds = new List<VolumetricCloud>();
     private bool cloudsGenerated = false;
     
@@ -27,15 +32,75 @@ public class VolumetricCloudManager : MonoBehaviour
         if (cloudsContainer == null)
             cloudsContainer = transform;
         
+        if (shipController == null && useShipWind)
+        {
+            shipController = FindObjectOfType<ShipController>();
+        }
 
         allClouds.AddRange(GetComponentsInChildren<VolumetricCloud>());
         
-
         if (allClouds.Count == 0)
         {
             GenerateClouds();
             cloudsGenerated = true;
         }
+    }
+    
+    private void Update()
+    {
+        if (useShipWind && shipController != null)
+        {
+            UpdateCloudsFromShipWind();
+        }
+    }
+    
+    private void UpdateCloudsFromShipWind()
+    {
+        if (shipController.IsWindEnabled() == false)
+        {
+            return;
+        }
+        
+        float shipWindStrength = shipController.GetWindStrength();
+        if (shipWindStrength < 0.1f)
+        {
+            return;
+        }
+        
+        float shipWindHorizontal = shipController.GetWindDirectionHorizontal();
+        float shipWindVertical = shipController.GetWindDirectionVertical();
+        
+        float degToRad = 0.0174532925f;
+        float horizontalRad = shipWindHorizontal * degToRad;
+        float verticalRad = shipWindVertical * degToRad;
+        
+        float horizontalX = Mathf.Sin(horizontalRad);
+        float horizontalZ = Mathf.Cos(horizontalRad);
+        float horizontalLength = Mathf.Cos(verticalRad);
+        float verticalY = Mathf.Sin(verticalRad);
+        
+        Vector3 shipWindDirection = new Vector3(
+            horizontalX * horizontalLength,
+            verticalY,
+            horizontalZ * horizontalLength
+        );
+        
+        float windDirLength = Mathf.Sqrt(shipWindDirection.x * shipWindDirection.x + shipWindDirection.y * shipWindDirection.y + shipWindDirection.z * shipWindDirection.z);
+        if (windDirLength > 0.001f)
+        {
+            shipWindDirection = new Vector3(
+                shipWindDirection.x / windDirLength,
+                shipWindDirection.y / windDirLength,
+                shipWindDirection.z / windDirLength
+            );
+        }
+        
+        float cloudSpeed = shipWindStrength * windToSpeedMultiplier;
+        
+        windDirection = shipWindDirection;
+        windSpeed = cloudSpeed;
+        
+        SetGlobalWind(windDirection, windSpeed);
     }
     
 
