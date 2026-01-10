@@ -15,7 +15,6 @@ public class LiquidLeakManager : MonoBehaviour
         if (leakParticleSystem != null)
         {
             emissionModule = leakParticleSystem.emission;
-
             emissionModule.enabled = false;
             
             Debug.Log("LiquidLeakManager инициализирован для: " + gameObject.name);
@@ -30,17 +29,14 @@ public class LiquidLeakManager : MonoBehaviour
     {
         if (attachedTank != null && leakParticleSystem != null)
         {
-
             var emissionModule = leakParticleSystem.emission;
             
-
             if (attachedTank.HasLeak())
             {
                 if (!emissionModule.enabled)
                 {
                     emissionModule.enabled = true;
                     
-
                     if (!leakParticleSystem.isPlaying)
                     {
                         leakParticleSystem.Play();

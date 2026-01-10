@@ -86,6 +86,7 @@ public class ShipController : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private ShipThrusterManager thrusterManager;
+    [SerializeField] private VolumetricCloudManager cloudManager;
 
 
     private List<EngineFireController> engines = new List<EngineFireController>();
@@ -95,6 +96,8 @@ public class ShipController : MonoBehaviour
 
 
     private float[] engineThrusts = new float[4];
+    private float cloudWindUpdateTimer = 0f;
+    private const float cloudWindUpdateInterval = 1f;
 
 
     private Vector2[] engineRotations = new Vector2[4];
@@ -151,8 +154,18 @@ public class ShipController : MonoBehaviour
             Collider shipCollider = GetComponent<Collider>();
             if (shipCollider == null)
             {
-
-                shipCollider = GetComponentInChildren<Collider>();
+                Collider[] allColliders = GetComponentsInChildren<Collider>();
+                foreach (Collider col in allColliders)
+                {
+                    if (col == null) continue;
+                    string objName = col.gameObject.name.ToLower();
+                    if (objName.Contains("tank") || objName.Contains("liquid") || objName.Contains("leak"))
+                    {
+                        continue;
+                    }
+                    shipCollider = col;
+                    break;
+                }
             }
 
             if (shipCollider == null)
@@ -227,6 +240,8 @@ public class ShipController : MonoBehaviour
         {
             CalculateAndLogTWR();
         }
+        
+        UpdateCloudWind();
     }
 
 
@@ -395,14 +410,34 @@ public class ShipController : MonoBehaviour
             }
         }
 
+        HashSet<string> tankNames = new HashSet<string>();
+        Transform tanksParent = transform.Find("tanks");
+        if (tanksParent != null)
+        {
+            tankNames.Add("tanks");
+            foreach (Transform tank in tanksParent)
+            {
+                if (tank != null)
+                {
+                    tankNames.Add(tank.name.ToLower());
+                    foreach (Transform child in tank.GetComponentsInChildren<Transform>())
+                    {
+                        tankNames.Add(child.name.ToLower());
+                    }
+                }
+            }
+        }
+
 
         shipColliders = shipColliders.Distinct()
             .Where(c => c != null && 
                    !legNames.Contains(c.gameObject.name.ToLower()) &&
-                   !legNames.Any(legName => c.gameObject.name.ToLower().Contains(legName)))
+                   !legNames.Any(legName => c.gameObject.name.ToLower().Contains(legName)) &&
+                   !tankNames.Contains(c.gameObject.name.ToLower()) &&
+                   !tankNames.Any(tankName => c.gameObject.name.ToLower().Contains(tankName)))
             .ToList();
 
-        Debug.Log($"ShipController: Найдено {shipColliders.Count} коллайдеров корабля (исключая ноги)");
+        Debug.Log($"ShipController: Найдено {shipColliders.Count} коллайдеров корабля (исключая ноги и баки)");
 
         foreach (Transform leg in legObjects)
         {
@@ -555,6 +590,13 @@ public class ShipController : MonoBehaviour
         if (autoDetectEnvironment)
         {
             DetectEnvironmentMode();
+        }
+        
+        cloudWindUpdateTimer += Time.deltaTime;
+        if (cloudWindUpdateTimer >= cloudWindUpdateInterval)
+        {
+            cloudWindUpdateTimer = 0f;
+            UpdateCloudWind();
         }
     }
 
@@ -1628,6 +1670,8 @@ public class ShipController : MonoBehaviour
                 }
             }
         }
+        
+        UpdateCloudWind();
     }
 
 
@@ -1657,6 +1701,8 @@ public class ShipController : MonoBehaviour
         {
             windDirectionHorizontalAngle = windDirectionHorizontalAngle + 360f;
         }
+        
+        UpdateCloudWind();
     }
 
 
@@ -1675,6 +1721,8 @@ public class ShipController : MonoBehaviour
     {
 
         windDirectionVerticalAngle = Mathf.Clamp(angle, -90f, 90f);
+        
+        UpdateCloudWind();
     }
 
 
@@ -1694,6 +1742,7 @@ public class ShipController : MonoBehaviour
     {
         SetWindDirectionHorizontal(horizontalAngle);
         SetWindDirectionVertical(verticalAngle);
+        UpdateCloudWind();
     }
 
 
@@ -1723,8 +1772,30 @@ public class ShipController : MonoBehaviour
         return useWind;
     }
 
+    private void UpdateCloudWind()
+    {
+        if (cloudManager == null)
+        {
+            cloudManager = FindObjectOfType<VolumetricCloudManager>();
+            if (cloudManager == null)
+            {
+                return;
+            }
+        }
 
+        float degToRad = Mathf.Deg2Rad;
+        float horizontalRad = windDirectionHorizontalAngle * degToRad;
 
+        Vector3 windDirectionWorld = new Vector3(
+            Mathf.Sin(horizontalRad),
+            0f,
+            Mathf.Cos(horizontalRad)
+        ).normalized;
+
+        float cloudWindSpeed = Mathf.Max(0f, windStrength / maxWindStrength * 5f);
+
+        cloudManager.SetGlobalWind(windDirectionWorld, cloudWindSpeed);
+    }
 
     private void OnDrawGizmos()
     {

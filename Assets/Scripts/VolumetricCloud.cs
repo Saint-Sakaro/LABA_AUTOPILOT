@@ -28,7 +28,6 @@ public class VolumetricCloud : MonoBehaviour
         
         if (cloudMaterial == null)
             cloudMaterial = cloudParticles.GetComponent<ParticleSystemRenderer>().material;
-        
 
         if (cloudMaterial.mainTexture == null)
         {
@@ -40,28 +39,21 @@ public class VolumetricCloud : MonoBehaviour
             cloudMaterial.mainTexture = cloudTexture;
         }
         
-
         DisableVelocityOverLifetime();
     }
     
-
-
-
     private void DisableVelocityOverLifetime()
     {
         var velocity = cloudParticles.velocityOverLifetime;
-        velocity.enabled = false;
+        velocity.enabled = false;  
     }
     
     private void Update()
     {
-
         UpdatePulsation();
         
-
         transform.position += windDirection.normalized * windSpeed * Time.deltaTime;
         
-
         cloudMaterial.SetFloat("_Density", density);
     }
     
@@ -108,9 +100,6 @@ public class VolumetricCloud : MonoBehaviour
     {
         pulsateSpeed = Mathf.Max(0f, speed);
     }
-
-
-
 
     public void SetWind(Vector3 direction, float speed)
     {

@@ -11,7 +11,6 @@ public class ShipPhysicsManager : MonoBehaviour
     [SerializeField] private float maxTiltAngle = 45f;
     [SerializeField] private float tiltRecoverySpeed = 2f;
     
-
     private bool isEnginesRunning = false;
     
     private float initialShipMass;
@@ -27,11 +26,10 @@ public class ShipPhysicsManager : MonoBehaviour
         
         fuelTanks = GetComponentsInChildren<LiquidTank>();
         
-
         shipRigidbody.isKinematic = true;
         foreach (LiquidTank tank in fuelTanks)
         {
-            tank.SetConsuming(true);
+            tank.SetConsuming(true); 
         }
         
         Debug.Log("Корабль включен. Нажми 'Начать посадку' чтобы отключить мотры и упасть.");
@@ -49,22 +47,18 @@ public class ShipPhysicsManager : MonoBehaviour
             UpdateLanding();
         }
     }
-    
-
-
 
     public void StartLanding()
     {
-        if (isLanding) return;
+        if (isLanding) return; 
         
         isLanding = true;
         isEnginesRunning = false;
         
-
         shipRigidbody.isKinematic = false;
-        shipRigidbody.linearVelocity = Vector3.zero;
+        shipRigidbody.useGravity = true; 
+        shipRigidbody.linearVelocity = Vector3.zero; 
         
-
         foreach (LiquidTank tank in fuelTanks)
         {
             tank.SetConsuming(false);
@@ -75,7 +69,6 @@ public class ShipPhysicsManager : MonoBehaviour
     
     private void UpdateLanding()
     {
-
         RaycastHit hit;
         float rayDistance = 2f;
         
@@ -87,7 +80,6 @@ public class ShipPhysicsManager : MonoBehaviour
             }
         }
         
-
         float currentTilt = Vector3.Angle(transform.up, Vector3.up);
         if (currentTilt > maxTiltAngle)
         {
@@ -99,9 +91,8 @@ public class ShipPhysicsManager : MonoBehaviour
     {
         isLanding = false;
         shipRigidbody.linearVelocity = Vector3.zero;
-        shipRigidbody.isKinematic = true;
+        shipRigidbody.isKinematic = true; 
         
-
         foreach (LiquidTank tank in fuelTanks)
         {
             tank.SetConsuming(true);
@@ -109,9 +100,6 @@ public class ShipPhysicsManager : MonoBehaviour
         
         Debug.Log("Посадка завершена!");
     }
-    
-
-
 
     public void CreateLeakInRandomTank(float leakRate = 50f)
     {
@@ -123,8 +111,6 @@ public class ShipPhysicsManager : MonoBehaviour
         Debug.Log($"Пробоина в баке {randomIndex}! Утечка {leakRate} л/сек");
     }
     
-
-
 
     public float GetTotalFuelMass()
     {

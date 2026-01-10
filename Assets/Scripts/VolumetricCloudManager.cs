@@ -8,21 +8,16 @@ public class VolumetricCloudManager : MonoBehaviour
     
     [Header("Generation Settings")]
     [SerializeField] private int numberOfClouds = 50;
-    [SerializeField] private float territoryRadius = 500f;
-    [SerializeField] private Vector3 territoryCenter = Vector3.zero;
+    [SerializeField] private float territoryRadius = 500f;  
+    [SerializeField] private Vector3 territoryCenter = Vector3.zero;  
     
     [Header("Height Settings")]
-    [SerializeField] private float minHeight = 50f;
-    [SerializeField] private float maxHeight = 200f;
+    [SerializeField] private float minHeight = 50f; 
+    [SerializeField] private float maxHeight = 200f; 
     
     [Header("Wind")]
     [SerializeField] private Vector3 windDirection = Vector3.right;
     [SerializeField] private float windSpeed = 0.5f;
-    
-    [Header("Ship Wind Connection")]
-    [SerializeField] private ShipController shipController;
-    [SerializeField] private bool useShipWind = true;
-    [SerializeField] private float windToSpeedMultiplier = 0.01f;
     
     private List<VolumetricCloud> allClouds = new List<VolumetricCloud>();
     private bool cloudsGenerated = false;
@@ -32,11 +27,6 @@ public class VolumetricCloudManager : MonoBehaviour
         if (cloudsContainer == null)
             cloudsContainer = transform;
         
-        if (shipController == null && useShipWind)
-        {
-            shipController = FindObjectOfType<ShipController>();
-        }
-
         allClouds.AddRange(GetComponentsInChildren<VolumetricCloud>());
         
         if (allClouds.Count == 0)
@@ -46,79 +36,16 @@ public class VolumetricCloudManager : MonoBehaviour
         }
     }
     
-    private void Update()
-    {
-        if (useShipWind && shipController != null)
-        {
-            UpdateCloudsFromShipWind();
-        }
-    }
-    
-    private void UpdateCloudsFromShipWind()
-    {
-        if (shipController.IsWindEnabled() == false)
-        {
-            return;
-        }
-        
-        float shipWindStrength = shipController.GetWindStrength();
-        if (shipWindStrength < 0.1f)
-        {
-            return;
-        }
-        
-        float shipWindHorizontal = shipController.GetWindDirectionHorizontal();
-        float shipWindVertical = shipController.GetWindDirectionVertical();
-        
-        float degToRad = 0.0174532925f;
-        float horizontalRad = shipWindHorizontal * degToRad;
-        float verticalRad = shipWindVertical * degToRad;
-        
-        float horizontalX = Mathf.Sin(horizontalRad);
-        float horizontalZ = Mathf.Cos(horizontalRad);
-        float horizontalLength = Mathf.Cos(verticalRad);
-        float verticalY = Mathf.Sin(verticalRad);
-        
-        Vector3 shipWindDirection = new Vector3(
-            horizontalX * horizontalLength,
-            verticalY,
-            horizontalZ * horizontalLength
-        );
-        
-        float windDirLength = Mathf.Sqrt(shipWindDirection.x * shipWindDirection.x + shipWindDirection.y * shipWindDirection.y + shipWindDirection.z * shipWindDirection.z);
-        if (windDirLength > 0.001f)
-        {
-            shipWindDirection = new Vector3(
-                shipWindDirection.x / windDirLength,
-                shipWindDirection.y / windDirLength,
-                shipWindDirection.z / windDirLength
-            );
-        }
-        
-        float cloudSpeed = shipWindStrength * windToSpeedMultiplier;
-        
-        windDirection = shipWindDirection;
-        windSpeed = cloudSpeed;
-        
-        SetGlobalWind(windDirection, windSpeed);
-    }
-    
-
-
-
     private void GenerateClouds()
     {
         for (int i = 0; i < numberOfClouds; i++)
         {
-
             Vector3 randomPosition = GetRandomPositionInTerritory();
             
-
             VolumetricCloud cloud = CreateCloud(randomPosition);
             
             if (cloud != null)
             {
-
                 float randomWindSpeed = Random.Range(windSpeed * 0.5f, windSpeed * 1.5f);
                 cloud.SetWind(GetRandomWindDirection(), randomWindSpeed);
             }
@@ -126,36 +53,25 @@ public class VolumetricCloudManager : MonoBehaviour
         
         Debug.Log($"✅ Сгенерировано {allClouds.Count} облаков");
     }
-    
-
-
 
     private Vector3 GetRandomPositionInTerritory()
     {
-
         float randomAngle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
         float randomDistance = Random.Range(0f, territoryRadius);
         
         float x = territoryCenter.x + Mathf.Cos(randomAngle) * randomDistance;
         float z = territoryCenter.z + Mathf.Sin(randomAngle) * randomDistance;
         
-
         float y = territoryCenter.y + Random.Range(minHeight, maxHeight);
         
         return new Vector3(x, y, z);
     }
-    
-
-
 
     private Vector3 GetRandomWindDirection()
     {
         float randomAngle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
         return new Vector3(Mathf.Cos(randomAngle), 0, Mathf.Sin(randomAngle)).normalized;
     }
-    
-
-
 
     public VolumetricCloud CreateCloud(Vector3 position, float density = 1f)
     {
@@ -174,70 +90,47 @@ public class VolumetricCloudManager : MonoBehaviour
         return cloud;
     }
     
-
-
-
     public void SetGlobalWind(Vector3 direction, float speed)
     {
         windDirection = direction.normalized;
         windSpeed = speed;
         
-
         foreach (VolumetricCloud cloud in allClouds)
         {
             cloud.SetWind(windDirection, windSpeed);
         }
     }
     
-
-
-
     public List<VolumetricCloud> GetAllClouds() => allClouds;
     
-
-
-
     public int GetCloudCount() => allClouds.Count;
     
-
-
-
     public void RegenerateClouds()
     {
-
         foreach (VolumetricCloud cloud in allClouds)
         {
             Destroy(cloud.gameObject);
         }
         allClouds.Clear();
         
-
         GenerateClouds();
     }
-    
-
-
 
     private void OnDrawGizmos()
     {
-
-        Gizmos.color = new Color(0, 1, 1, 0.3f);
+        Gizmos.color = new Color(0, 1, 1, 0.3f); 
         DrawCircle(territoryCenter, territoryRadius, 64);
         
-
         Gizmos.color = Color.cyan;
         Gizmos.DrawSphere(territoryCenter, 5f);
         
-
-        Gizmos.color = new Color(0, 1, 0, 0.3f);
+        Gizmos.color = new Color(0, 1, 0, 0.3f); 
         Vector3 minHeightPos = territoryCenter + Vector3.up * minHeight;
         Vector3 maxHeightPos = territoryCenter + Vector3.up * maxHeight;
         DrawCircle(minHeightPos, territoryRadius, 64);
         DrawCircle(maxHeightPos, territoryRadius, 64);
     }
     
-
-
 
     private void DrawCircle(Vector3 center, float radius, int segments)
     {

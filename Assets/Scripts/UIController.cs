@@ -19,14 +19,12 @@ public class UIController : MonoBehaviour
     {
         if (shipManager == null) return;
         
-
         float totalFuel = shipManager.GetTotalFuelMass();
         if (fuelText != null)
         {
             fuelText.text = $"Топливо: {totalFuel:F1} кг";
         }
         
-
         Rigidbody shipRb = shipManager.GetComponent<Rigidbody>();
         if (shipRb != null && centerOfMassText != null)
         {
@@ -34,7 +32,6 @@ public class UIController : MonoBehaviour
             centerOfMassText.text = $"Центр массы: {com.x:F2}, {com.y:F2}, {com.z:F2}";
         }
         
-
         if (statusText != null && tanks != null)
         {
             int leakingTanks = 0;
@@ -49,19 +46,16 @@ public class UIController : MonoBehaviour
             if (leakingTanks > 0)
             {
                 statusText.text = $"УТЕЧКА! {leakingTanks} баков!";
-                statusText.color = new Color(1, 0, 0, 1);
+                statusText.color = new Color(1, 0, 0, 1); 
             }
             else
             {
                 statusText.text = "Система в норме";
-                statusText.color = new Color(0, 1, 0, 1);
+                statusText.color = new Color(0, 1, 0, 1); 
             }
         }
     }
     
-
-
-
     public void OnLeakButtonPressed()
     {
         if (shipManager != null)
@@ -69,9 +63,6 @@ public class UIController : MonoBehaviour
             shipManager.CreateLeakInRandomTank(50f);
         }
     }
-    
-
-
 
     public void OnLandingButtonPressed()
     {

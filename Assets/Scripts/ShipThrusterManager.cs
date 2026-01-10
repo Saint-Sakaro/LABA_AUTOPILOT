@@ -1,5 +1,3 @@
-
-
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -19,7 +17,6 @@ public class ShipThrusterManager : MonoBehaviour
     
     private void Start()
     {
-
         if (engines.Count == 0)
         {
             engines.AddRange(GetComponentsInChildren<EngineFireController>());
@@ -45,9 +42,6 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-
-
-
     public void SetGlobalThrust(float thrustPercent)
     {
         globalThrust = Mathf.Clamp01(thrustPercent);
@@ -58,9 +52,6 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-
-
-
     public void SetEngineThrust(int engineIndex, float thrustPercent)
     {
         if (engineIndex >= 0 && engineIndex < engines.Count)
@@ -69,10 +60,6 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-
-
-
-
     public void SetIndividualThrust(float frontLeft, float frontRight, float backLeft, float backRight)
     {
         if (engines.Count >= 4)
@@ -84,17 +71,11 @@ public class ShipThrusterManager : MonoBehaviour
         }
     }
     
-
-
-
     public float GetGlobalThrust()
     {
         return globalThrust;
     }
     
-
-
-
     public float GetEngineThrust(int engineIndex)
     {
         if (engineIndex >= 0 && engineIndex < engines.Count)

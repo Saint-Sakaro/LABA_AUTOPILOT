@@ -687,8 +687,8 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": 1166.0,
-            "y": 350.9999694824219,
+            "x": 1152.0001220703125,
+            "y": 449.00006103515627,
             "width": 130.0,
             "height": 142.0
         }
@@ -1495,8 +1495,8 @@
     "m_ShaderOutputName": "Tiling",
     "m_StageCapability": 3,
     "m_Value": {
-        "x": 100.0,
-        "y": 100.0
+        "x": 5.0,
+        "y": 5.0
     },
     "m_DefaultValue": {
         "x": 1.0,
@@ -3295,7 +3295,7 @@
         "linear interpolate"
     ],
     "m_Precision": 0,
-    "m_PreviewExpanded": true,
+    "m_PreviewExpanded": false,
     "m_DismissedVersion": 0,
     "m_PreviewMode": 0,
     "m_CustomColors": {
@@ -3314,8 +3314,8 @@
     "m_ShaderOutputName": "Tiling",
     "m_StageCapability": 3,
     "m_Value": {
-        "x": 200.0,
-        "y": 200.0
+        "x": 40.0,
+        "y": 40.0
     },
     "m_DefaultValue": {
         "x": 1.0,

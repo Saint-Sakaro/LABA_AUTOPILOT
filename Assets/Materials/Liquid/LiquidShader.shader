@@ -81,18 +81,18 @@ Shader "Custom/LiquidShader"
                 // Волны только в верхней половине
                 float upperHalfMask = step(0.5, fillLevel);
                 
-                // Амплитуда и скорость зависят от скорости корабля
+                // Амплитуда и скорость зависят от скорости корабля (уменьшено влияние)
                 float velocityMagnitude = _ShipVelocityMagnitude;
-                float dynamicAmplitude = _WaveAmplitude * (1.0 + velocityMagnitude * 2.0);
-                float dynamicSpeed = _WaveSpeed * (1.0 + velocityMagnitude * 1.5);
+                float dynamicAmplitude = _WaveAmplitude * (1.0 + velocityMagnitude * 0.3f);
+                float dynamicSpeed = _WaveSpeed * (1.0 + velocityMagnitude * 0.2f);
                 
-                // Волны с учётом направления движения
-                float waveX = sin((positionWS.x + _ShipVelocityX * _Time.y + _Time.y * dynamicSpeed) * 5.0) * dynamicAmplitude;
-                float waveZ = sin((positionWS.z + _ShipVelocityZ * _Time.y + _Time.y * dynamicSpeed) * 5.0) * dynamicAmplitude;
+                // Волны с учётом направления движения (уменьшено влияние)
+                float waveX = sin((positionWS.x + _ShipVelocityX * _Time.y * 0.1f + _Time.y * dynamicSpeed) * 3.0) * dynamicAmplitude;
+                float waveZ = sin((positionWS.z + _ShipVelocityZ * _Time.y * 0.1f + _Time.y * dynamicSpeed) * 3.0) * dynamicAmplitude;
                 float wave = (waveX + waveZ) * 0.5;
                 
-                // Применяем волны только в верхней половине
-                positionWS.y += wave * upperHalfMask * 0.1;
+                // Применяем волны только в верхней половине (уменьшена интенсивность)
+                positionWS.y += wave * upperHalfMask * 0.03f;
                 
                 OUT.positionHCS = TransformWorldToHClip(positionWS);
                 OUT.worldPos = positionWS;
