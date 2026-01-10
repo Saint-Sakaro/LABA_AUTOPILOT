@@ -47,6 +47,15 @@ public class ShipController : MonoBehaviour
     [SerializeField] private float maxWindStrength = 1f;
     [SerializeField] private bool showWindGizmo = true;
     [SerializeField] private Color windGizmoColor = Color.cyan;
+    
+    [Header("Wind Physics - Ship Rotation")]
+    [SerializeField] private bool enableWindRotation = true;
+    [SerializeField] private float windLeverArmMultiplier = 0.5f;
+    [SerializeField] private Vector3 shipSize = new Vector3(4f, 2f, 6f);
+    [SerializeField] private bool autoCalculateShipSize = true;
+    [SerializeField] private float windInfluencePower = 1.2f;
+    [SerializeField] private bool useRealisticSurfaceArea = true;
+    [SerializeField] private float surfaceAreaMultiplier = 1.0f;
 
     [Header("Thrust Settings")]
     [SerializeField] private float maxThrustForce = 100000f;
@@ -1432,20 +1441,13 @@ public class ShipController : MonoBehaviour
         float horizontalLength = Mathf.Cos(verticalRad);
         float verticalY = Mathf.Sin(verticalRad);
 
-        Vector3 windDirectionLocal = new Vector3(
+        Vector3 windDirectionWorld = new Vector3(
             horizontalX * horizontalLength,
             verticalY,
             horizontalZ * horizontalLength
         );
         
-        float windDirLength = Mathf.Sqrt(windDirectionLocal.x * windDirectionLocal.x + windDirectionLocal.y * windDirectionLocal.y + windDirectionLocal.z * windDirectionLocal.z);
-        windDirectionLocal = new Vector3(
-            windDirectionLocal.x / windDirLength,
-            windDirectionLocal.y / windDirLength,
-            windDirectionLocal.z / windDirLength
-        );
-
-        Vector3 windDirectionWorld = transform.TransformDirection(windDirectionLocal);
+        windDirectionWorld = windDirectionWorld.normalized;
 
         Vector3 windForce = new Vector3(
             windDirectionWorld.x * clampedWindStrength,
@@ -1454,21 +1456,195 @@ public class ShipController : MonoBehaviour
         );
 
         Vector3 centerOfMassWorld = shipRigidbody.worldCenterOfMass;
-        shipRigidbody.AddForceAtPosition(windForce, centerOfMassWorld, ForceMode.Force);
-
-        if (showDebugInfo == true)
+        
+        if (enableWindRotation)
         {
-            if (Time.frameCount % 60 == 0)
+            Vector3 windDirectionLocal = transform.InverseTransformDirection(windDirectionWorld);
+            Vector3 centerOfPressure = CalculateCenterOfPressure(windDirectionLocal);
+            shipRigidbody.AddForceAtPosition(windForce, centerOfPressure, ForceMode.Force);
+            
+            if (showDebugInfo && Time.frameCount % 60 == 0)
             {
-                float windForceLength = Mathf.Sqrt(windForce.x * windForce.x + windForce.y * windForce.y + windForce.z * windForce.z);
+                Vector3 leverArm = centerOfPressure - centerOfMassWorld;
+                float torqueMagnitude = Vector3.Cross(leverArm, windForce).magnitude;
                 Debug.Log($"Wind: Strength={clampedWindStrength:F1}N, " +
-                         $"Horizontal={windDirectionHorizontalAngle:F1}°, " +
-                         $"Vertical={windDirectionVerticalAngle:F1}°, " +
-                         $"Force={windForceLength:F1}N, " +
-                         $"Direction Local={windDirectionLocal}, " +
-                         $"Direction World={windDirectionWorld}");
+                         $"Center of Pressure={centerOfPressure}, " +
+                         $"Lever Arm={leverArm.magnitude:F2}m, " +
+                         $"Torque={torqueMagnitude:F2}N*m");
             }
         }
+        else
+        {
+            shipRigidbody.AddForceAtPosition(windForce, centerOfMassWorld, ForceMode.Force);
+        }
+        
+        if (showDebugInfo == true)
+        {
+            if (Time.frameCount % 60 == 0 && !enableWindRotation)
+            {
+                float windForceLength = Mathf.Sqrt(windForce.x * windForce.x + windForce.y * windForce.y + windForce.z * windForce.z);
+                Debug.Log($"Wind (Global): Strength={clampedWindStrength:F1}N, " +
+                         $"Horizontal={windDirectionHorizontalAngle:F1}°, " +
+                         $"Vertical={windDirectionVerticalAngle:F1}°, " +
+                         $"Direction World={windDirectionWorld}, " +
+                         $"Force={windForceLength:F1}N");
+            }
+        }
+    }
+
+    private Vector3 CalculateCenterOfPressure(Vector3 windDirectionLocal)
+    {
+        if (shipRigidbody == null)
+        {
+            return transform.position;
+        }
+        
+        Vector3 centerOfMassLocal = shipRigidbody.centerOfMass;
+        
+        if (autoCalculateShipSize)
+        {
+            Bounds shipBounds = CalculateShipBounds();
+            Vector3 localSize = transform.InverseTransformVector(shipBounds.size);
+            shipSize = new Vector3(Mathf.Abs(localSize.x), Mathf.Abs(localSize.y), Mathf.Abs(localSize.z));
+        }
+        
+        float forwardDot = Vector3.Dot(windDirectionLocal, Vector3.forward);
+        float rightDot = Vector3.Dot(windDirectionLocal, Vector3.right);
+        float upDot = Vector3.Dot(windDirectionLocal, Vector3.up);
+        
+        float absForwardDot = Mathf.Abs(forwardDot);
+        float absRightDot = Mathf.Abs(rightDot);
+        float absUpDot = Mathf.Abs(upDot);
+        
+        float forwardInfluence;
+        float rightInfluence;
+        float upInfluence;
+        
+        if (useRealisticSurfaceArea)
+        {
+            float frontBackArea = shipSize.x * shipSize.y;
+            float leftRightArea = shipSize.z * shipSize.y;
+            float topBottomArea = shipSize.x * shipSize.z;
+            
+            float totalArea = frontBackArea + leftRightArea + topBottomArea;
+            if (totalArea < 0.001f) totalArea = 1f;
+            
+            float frontBackExposedArea = absForwardDot * frontBackArea;
+            float leftRightExposedArea = absRightDot * leftRightArea;
+            float topBottomExposedArea = absUpDot * topBottomArea;
+            
+            float totalExposedArea = frontBackExposedArea + leftRightExposedArea + topBottomExposedArea;
+            if (totalExposedArea < 0.001f) totalExposedArea = 1f;
+            
+            forwardInfluence = Mathf.Pow(frontBackExposedArea / totalExposedArea, windInfluencePower);
+            rightInfluence = Mathf.Pow(leftRightExposedArea / totalExposedArea, windInfluencePower);
+            upInfluence = Mathf.Pow(topBottomExposedArea / totalExposedArea, windInfluencePower);
+        }
+        else
+        {
+            forwardInfluence = Mathf.Pow(absForwardDot, windInfluencePower);
+            rightInfluence = Mathf.Pow(absRightDot, windInfluencePower);
+            upInfluence = Mathf.Pow(absUpDot, windInfluencePower);
+        }
+        
+        float totalInfluence = forwardInfluence + rightInfluence + upInfluence;
+        if (totalInfluence < 0.001f)
+        {
+            totalInfluence = 1f;
+        }
+        
+        forwardInfluence = forwardInfluence / totalInfluence;
+        rightInfluence = rightInfluence / totalInfluence;
+        upInfluence = upInfluence / totalInfluence;
+        
+        Vector3 centerOfPressureLocal = centerOfMassLocal;
+        
+        float maxDimension = Mathf.Max(shipSize.x, Mathf.Max(shipSize.y, shipSize.z));
+        
+        float forwardOffset = Mathf.Sign(forwardDot) * shipSize.z * 0.5f * (1f + windLeverArmMultiplier) * forwardInfluence * surfaceAreaMultiplier;
+        float rightOffset = Mathf.Sign(rightDot) * shipSize.x * 0.5f * (1f + windLeverArmMultiplier) * rightInfluence * surfaceAreaMultiplier;
+        float upOffset = Mathf.Sign(upDot) * shipSize.y * 0.5f * (1f + windLeverArmMultiplier) * upInfluence * surfaceAreaMultiplier;
+        
+        if (forwardInfluence > 0.5f)
+        {
+            centerOfPressureLocal.z = centerOfMassLocal.z + forwardOffset;
+        }
+        else
+        {
+            centerOfPressureLocal.z = centerOfMassLocal.z + forwardOffset * 0.5f;
+        }
+        
+        if (rightInfluence > 0.5f)
+        {
+            centerOfPressureLocal.x = centerOfMassLocal.x + rightOffset;
+        }
+        else
+        {
+            centerOfPressureLocal.x = centerOfMassLocal.x + rightOffset * 0.5f;
+        }
+        
+        if (upInfluence > 0.5f)
+        {
+            centerOfPressureLocal.y = centerOfMassLocal.y + upOffset;
+        }
+        else
+        {
+            centerOfPressureLocal.y = centerOfMassLocal.y + upOffset * 0.5f;
+        }
+        
+        Vector3 centerOfPressureWorld = transform.TransformPoint(centerOfPressureLocal);
+        
+        if (showDebugInfo && Time.frameCount % 60 == 0)
+        {
+            Debug.Log($"Center of Pressure: Local={centerOfPressureLocal}, " +
+                     $"Forward Influence={forwardInfluence:F2}, Right={rightInfluence:F2}, Up={upInfluence:F2}, " +
+                     $"Ship Size={shipSize}, Lever Arm Mult={windLeverArmMultiplier}");
+        }
+        
+        return centerOfPressureWorld;
+    }
+
+    private Bounds CalculateShipBounds()
+    {
+        Bounds bounds = new Bounds(transform.position, Vector3.zero);
+        bool boundsInitialized = false;
+        
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null) continue;
+            
+            string objName = renderer.gameObject.name.ToLower();
+            if (objName.Contains("tank") || objName.Contains("liquid") || objName.Contains("leak"))
+            {
+                continue;
+            }
+            
+            if (!boundsInitialized)
+            {
+                bounds = renderer.bounds;
+                boundsInitialized = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+        
+        if (!boundsInitialized)
+        {
+            Collider shipCollider = GetComponent<Collider>();
+            if (shipCollider != null)
+            {
+                bounds = shipCollider.bounds;
+            }
+            else
+            {
+                bounds = new Bounds(transform.position, shipSize);
+            }
+        }
+        
+        return bounds;
     }
 
 
@@ -1785,11 +1961,17 @@ public class ShipController : MonoBehaviour
 
         float degToRad = Mathf.Deg2Rad;
         float horizontalRad = windDirectionHorizontalAngle * degToRad;
+        float verticalRad = windDirectionVerticalAngle * degToRad;
+
+        float horizontalX = Mathf.Sin(horizontalRad);
+        float horizontalZ = Mathf.Cos(horizontalRad);
+        float horizontalLength = Mathf.Cos(verticalRad);
+        float verticalY = Mathf.Sin(verticalRad);
 
         Vector3 windDirectionWorld = new Vector3(
-            Mathf.Sin(horizontalRad),
-            0f,
-            Mathf.Cos(horizontalRad)
+            horizontalX * horizontalLength,
+            verticalY,
+            horizontalZ * horizontalLength
         ).normalized;
 
         float cloudWindSpeed = Mathf.Max(0f, windStrength / maxWindStrength * 5f);
@@ -1852,6 +2034,22 @@ public class ShipController : MonoBehaviour
 
             Gizmos.color = windGizmoColor;
             Gizmos.DrawLine(startPos, endPos);
+            
+            if (enableWindRotation && shipRigidbody != null && Application.isPlaying)
+            {
+                Vector3 centerOfPressure = CalculateCenterOfPressure(windDirectionLocal);
+                Vector3 centerOfMassWorld = shipRigidbody.worldCenterOfMass;
+                
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawSphere(centerOfPressure, 0.3f);
+                
+                Gizmos.color = Color.magenta;
+                Gizmos.DrawLine(centerOfMassWorld, centerOfPressure);
+                
+                Gizmos.color = windGizmoColor;
+                Vector3 windForceDirection = windDirectionWorld * arrowLength;
+                Gizmos.DrawLine(centerOfPressure, centerOfPressure + windForceDirection);
+            }
 
 
             Vector3 arrowHeadSize = windDirectionWorld * 0.5f;

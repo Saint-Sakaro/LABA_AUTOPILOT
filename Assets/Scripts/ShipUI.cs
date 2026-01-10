@@ -26,6 +26,7 @@ public class ShipUI : MonoBehaviour
 
     [Header("Wind Control")]
     [SerializeField] private Slider windStrengthSlider;
+    [SerializeField] private WindDirection3DVisualizer windDirection3DVisualizer;
     [SerializeField] private Slider windDirectionHorizontalSlider;
     [SerializeField] private Slider windDirectionVerticalSlider;
     [SerializeField] private TextMeshProUGUI windStrengthText;
@@ -33,8 +34,9 @@ public class ShipUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI windDirectionVerticalText;
     [SerializeField] private string windStrengthFormat = "Wind Strength: {0:F0} N";
     [SerializeField] private string windDirectionHorizontalFormat = "Wind Horizontal: {0:F0}°";
-    [SerializeField] private string windDirectionVerticalFormat = "Wind Vertical: {0:F0}°";
+    [SerializeField] private string windDirectionVerticalFormat = "Вертикальный угол: {0:F0}° (↑ вверх / ↓ вниз)";
     [SerializeField] private bool showWindControl = true;
+    [SerializeField] private bool use3DWindVisualizer = true;
 
     [Header("Update Settings")]
     [SerializeField] private float updateInterval = 0.1f;
@@ -109,32 +111,74 @@ public class ShipUI : MonoBehaviour
                 Debug.LogWarning("ShipUI: Wind Strength Slider не назначен, но showWindControl включен!");
             }
 
-
-            if (windDirectionHorizontalSlider != null)
+            if (use3DWindVisualizer && windDirection3DVisualizer != null)
             {
-                windDirectionHorizontalSlider.minValue = 0f;
-                windDirectionHorizontalSlider.maxValue = 360f;
-                windDirectionHorizontalSlider.value = shipController.GetWindDirectionHorizontal();
-                windDirectionHorizontalSlider.onValueChanged.AddListener(OnWindDirectionHorizontalSliderChanged);
-                UpdateWindDirectionHorizontalText();
+                if (windDirectionHorizontalSlider != null)
+                {
+                    windDirectionHorizontalSlider.gameObject.SetActive(false);
+                }
+                if (windDirectionHorizontalText != null)
+                {
+                    windDirectionHorizontalText.gameObject.SetActive(false);
+                }
+                
+                if (windDirectionVerticalSlider != null)
+                {
+                    windDirectionVerticalSlider.minValue = -90f;
+                    windDirectionVerticalSlider.maxValue = 90f;
+                    windDirectionVerticalSlider.value = shipController.GetWindDirectionVertical();
+                    windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
+                    windDirectionVerticalSlider.gameObject.SetActive(true);
+                    UpdateWindDirectionVerticalText();
+                }
+                else
+                {
+                    Debug.LogWarning("ShipUI: Wind Direction Vertical Slider не назначен для вертикального компонента!");
+                }
+                
+                if (windDirectionVerticalText != null)
+                {
+                    windDirectionVerticalText.gameObject.SetActive(true);
+                }
             }
             else
             {
-                Debug.LogWarning("ShipUI: Wind Direction Horizontal Slider не назначен, но showWindControl включен!");
-            }
+                if (windDirectionHorizontalSlider != null)
+                {
+                    windDirectionHorizontalSlider.minValue = 0f;
+                    windDirectionHorizontalSlider.maxValue = 360f;
+                    windDirectionHorizontalSlider.value = shipController.GetWindDirectionHorizontal();
+                    windDirectionHorizontalSlider.onValueChanged.AddListener(OnWindDirectionHorizontalSliderChanged);
+                    windDirectionHorizontalSlider.gameObject.SetActive(true);
+                    UpdateWindDirectionHorizontalText();
+                }
+                else
+                {
+                    Debug.LogWarning("ShipUI: Wind Direction Horizontal Slider не назначен, но showWindControl включен!");
+                }
 
-
-            if (windDirectionVerticalSlider != null)
-            {
-                windDirectionVerticalSlider.minValue = -90f;
-                windDirectionVerticalSlider.maxValue = 90f;
-                windDirectionVerticalSlider.value = shipController.GetWindDirectionVertical();
-                windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
-                UpdateWindDirectionVerticalText();
-            }
-            else
-            {
-                Debug.LogWarning("ShipUI: Wind Direction Vertical Slider не назначен, но showWindControl включен!");
+                if (windDirectionVerticalSlider != null)
+                {
+                    windDirectionVerticalSlider.minValue = -90f;
+                    windDirectionVerticalSlider.maxValue = 90f;
+                    windDirectionVerticalSlider.value = shipController.GetWindDirectionVertical();
+                    windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
+                    windDirectionVerticalSlider.gameObject.SetActive(true);
+                    UpdateWindDirectionVerticalText();
+                }
+                else
+                {
+                    Debug.LogWarning("ShipUI: Wind Direction Vertical Slider не назначен, но showWindControl включен!");
+                }
+                
+                if (windDirectionHorizontalText != null)
+                {
+                    windDirectionHorizontalText.gameObject.SetActive(true);
+                }
+                if (windDirectionVerticalText != null)
+                {
+                    windDirectionVerticalText.gameObject.SetActive(true);
+                }
             }
         }
     }
