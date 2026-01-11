@@ -56,6 +56,11 @@ public class ShipController : MonoBehaviour
     [SerializeField] private float windInfluencePower = 1.2f;
     [SerializeField] private bool useRealisticSurfaceArea = true;
     [SerializeField] private float surfaceAreaMultiplier = 1.0f;
+    
+    [Header("Wind Physics - Rectangular Shape")]
+    [SerializeField] private float sideWindRotationMultiplier = 1.5f; // Усиление вращения от бокового ветра для прямоугольника
+    [SerializeField] private float frontBackRotationMultiplier = 1.2f; // Усиление вращения от фронтального/заднего ветра
+    [SerializeField] private float rectangularShapeFactor = 1.3f; // Фактор формы для прямоугольного корпуса
 
     [Header("Thrust Settings")]
     [SerializeField] private float maxThrustForce = 100000f;
@@ -96,6 +101,12 @@ public class ShipController : MonoBehaviour
     [Header("References")]
     [SerializeField] private ShipThrusterManager thrusterManager;
     [SerializeField] private VolumetricCloudManager cloudManager;
+    [SerializeField] private TurbulenceManager turbulenceManager;
+    
+    [Header("Turbulence")]
+    [SerializeField] private bool useTurbulence = true;
+    [SerializeField] private float turbulenceForceMultiplier = 1f;
+    [SerializeField] private float turbulenceTorqueMultiplier = 1f;
 
 
     private List<EngineFireController> engines = new List<EngineFireController>();
@@ -641,7 +652,11 @@ public class ShipController : MonoBehaviour
         {
             ApplyWind();
         }
-
+        
+        if (useTurbulence)
+        {
+            ApplyTurbulence();
+        }
 
         ApplyThrustFromEngines();
 
@@ -1491,6 +1506,57 @@ public class ShipController : MonoBehaviour
             }
         }
     }
+    
+    private void ApplyTurbulence()
+    {
+        if (shipRigidbody == null) return;
+        
+        if (turbulenceManager == null)
+        {
+            turbulenceManager = FindObjectOfType<TurbulenceManager>();
+            if (turbulenceManager == null)
+            {
+                return;
+            }
+        }
+        
+        Vector3 shipPosition = transform.position;
+        float deltaTime = Time.fixedDeltaTime;
+        
+        // Получаем силу и момент турбулентности
+        Vector3 turbulenceForce = turbulenceManager.GetTurbulenceForce(shipPosition, deltaTime);
+        Vector3 turbulenceTorque = turbulenceManager.GetTurbulenceTorque(shipPosition, deltaTime);
+        
+        // Применяем силу турбулентности к центру масс (уменьшенная для большего акцента на вращении)
+        if (turbulenceForce.magnitude > 0.01f)
+        {
+            Vector3 centerOfMass = shipRigidbody.worldCenterOfMass;
+            Vector3 force = turbulenceForce * turbulenceForceMultiplier;
+            shipRigidbody.AddForceAtPosition(force, centerOfMass, ForceMode.Force);
+            
+            if (showDebugInfo && Time.frameCount % 60 == 0)
+            {
+                Debug.Log($"Turbulence Force: {force.magnitude:F2}N, Direction={force.normalized}");
+            }
+        }
+        
+        // Применяем момент турбулентности (вращение) - основной эффект турбулентности
+        if (turbulenceTorque.magnitude > 0.01f)
+        {
+            // Преобразуем момент в локальные координаты корабля для реалистичного вращения
+            Vector3 torqueLocal = transform.InverseTransformDirection(turbulenceTorque);
+            Vector3 torque = transform.TransformDirection(torqueLocal) * turbulenceTorqueMultiplier;
+            
+            shipRigidbody.AddTorque(torque, ForceMode.Force);
+            
+            if (showDebugInfo && Time.frameCount % 60 == 0)
+            {
+                Vector3 eulerTorque = torqueLocal;
+                Debug.Log($"Turbulence Torque: {torque.magnitude:F2}N*m, " +
+                         $"Roll (X)={eulerTorque.x:F2}, Pitch (Y)={eulerTorque.y:F2}, Yaw (Z)={eulerTorque.z:F2}");
+            }
+        }
+    }
 
     private Vector3 CalculateCenterOfPressure(Vector3 windDirectionLocal)
     {
@@ -1561,10 +1627,53 @@ public class ShipController : MonoBehaviour
         
         float maxDimension = Mathf.Max(shipSize.x, Mathf.Max(shipSize.y, shipSize.z));
         
-        float forwardOffset = Mathf.Sign(forwardDot) * shipSize.z * 0.5f * (1f + windLeverArmMultiplier) * forwardInfluence * surfaceAreaMultiplier;
-        float rightOffset = Mathf.Sign(rightDot) * shipSize.x * 0.5f * (1f + windLeverArmMultiplier) * rightInfluence * surfaceAreaMultiplier;
-        float upOffset = Mathf.Sign(upDot) * shipSize.y * 0.5f * (1f + windLeverArmMultiplier) * upInfluence * surfaceAreaMultiplier;
+        // Определяем, какой тип ветра доминирует (перед расчетом прямоугольного усиления)
+        bool isSideWind = rightInfluence > forwardInfluence && rightInfluence > upInfluence;
+        bool isFrontBackWind = forwardInfluence > rightInfluence && forwardInfluence > upInfluence;
         
+        // Для прямоугольного корпуса учитываем соотношение сторон
+        // Длинный корпус (Z > X) - больше влияние бокового ветра
+        // Широкий корпус (X > Z) - больше влияние фронтального ветра
+        float aspectRatioZ = shipSize.z / Mathf.Max(shipSize.x, 0.001f); // Длина/ширина
+        float aspectRatioX = shipSize.x / Mathf.Max(shipSize.z, 0.001f); // Ширина/длина
+        
+        // Усиление для прямоугольного корпуса на основе соотношения сторон
+        float rectangularBoost = 1f;
+        if (isSideWind && aspectRatioZ > 1.2f)
+        {
+            // Длинный корпус - боковой ветер создает большее вращение
+            rectangularBoost = Mathf.Min(aspectRatioZ * 0.3f + 1f, 2f);
+        }
+        else if (isFrontBackWind && aspectRatioX > 1.2f)
+        {
+            // Широкий корпус - фронтальный ветер создает большее вращение
+            rectangularBoost = Mathf.Min(aspectRatioX * 0.2f + 1f, 1.8f);
+        }
+        
+        // Усиление вращения для прямоугольного корпуса
+        // Для прямоугольника боковой ветер создает большее вращение из-за большей площади поверхности
+        float forwardMultiplier = frontBackRotationMultiplier;
+        float rightMultiplier = sideWindRotationMultiplier; // Боковой ветер - наибольшее влияние
+        float upMultiplier = 1.0f; // Вертикальный ветер - базовое влияние
+        
+        // Применяем множители в зависимости от типа ветра
+        if (isSideWind)
+        {
+            // Боковой ветер для прямоугольника - усиливаем смещение
+            rightMultiplier *= rectangularShapeFactor;
+        }
+        else if (isFrontBackWind)
+        {
+            // Фронтальный/задний ветер - умеренное усиление
+            forwardMultiplier *= rectangularShapeFactor * 0.8f;
+        }
+        
+        float forwardOffset = Mathf.Sign(forwardDot) * shipSize.z * 0.5f * (1f + windLeverArmMultiplier) * forwardInfluence * surfaceAreaMultiplier * forwardMultiplier * rectangularBoost;
+        float rightOffset = Mathf.Sign(rightDot) * shipSize.x * 0.5f * (1f + windLeverArmMultiplier) * rightInfluence * surfaceAreaMultiplier * rightMultiplier * rectangularBoost;
+        float upOffset = Mathf.Sign(upDot) * shipSize.y * 0.5f * (1f + windLeverArmMultiplier) * upInfluence * surfaceAreaMultiplier * upMultiplier;
+        
+        // Для прямоугольного корпуса боковой ветер создает вращение вокруг продольной оси (roll)
+        // и вращение вокруг вертикальной оси (yaw)
         if (forwardInfluence > 0.5f)
         {
             centerOfPressureLocal.z = centerOfMassLocal.z + forwardOffset;
@@ -1574,8 +1683,10 @@ public class ShipController : MonoBehaviour
             centerOfPressureLocal.z = centerOfMassLocal.z + forwardOffset * 0.5f;
         }
         
+        // Боковой ветер - основное влияние для прямоугольника
         if (rightInfluence > 0.5f)
         {
+            // Для бокового ветра смещаем центр давления дальше от центра масс
             centerOfPressureLocal.x = centerOfMassLocal.x + rightOffset;
         }
         else
@@ -1598,7 +1709,8 @@ public class ShipController : MonoBehaviour
         {
             Debug.Log($"Center of Pressure: Local={centerOfPressureLocal}, " +
                      $"Forward Influence={forwardInfluence:F2}, Right={rightInfluence:F2}, Up={upInfluence:F2}, " +
-                     $"Ship Size={shipSize}, Lever Arm Mult={windLeverArmMultiplier}");
+                     $"Ship Size={shipSize}, Aspect Ratio Z={aspectRatioZ:F2}, X={aspectRatioX:F2}, " +
+                     $"Rectangular Boost={rectangularBoost:F2}, Lever Arm Mult={windLeverArmMultiplier}");
         }
         
         return centerOfPressureWorld;
