@@ -47,8 +47,8 @@ public static class RockGenerator
                 
                 foreach (Rock rock in rockCache[sectorCoord])
                 {
-                    if (rock.position.x >= minX - 100f && rock.position.x < maxX + 100f &&
-                        rock.position.z >= minZ - 100f && rock.position.z < maxZ + 100f)
+                    if (rock.position.x >= minX && rock.position.x < maxX &&
+                        rock.position.z >= minZ && rock.position.z < maxZ)
                     {
                         rocksForPlatform.Add(new RockData(rock.position, rock.rockType, rock.rotation));
                     }
@@ -79,7 +79,6 @@ public static class RockGenerator
                 Random.InitState(uniqueSeed);
                 rockCounter++;
                 
-                // 25% вероятность появления камня
                 if (Random.value < 0.25f)
                 {
                     float offsetX = Random.Range(-ROCK_SPACING * 0.4f, ROCK_SPACING * 0.4f);
@@ -88,12 +87,12 @@ public static class RockGenerator
                     float rockZ = z + offsetZ;
                     
                     float heightAtPos = HillGenerator.GetHeightAtPosition(new Vector3(rockX, 0, rockZ));
-                    int rockType = Random.Range(0, 16); // 16 типов камней
+                    int rockType = Random.Range(0, 16);
                     float rotation = Random.Range(0f, Mathf.PI * 2f);
                     
                     Vector3 rockPos = new Vector3(
                         rockX,
-                        heightAtPos + 17f,
+                        heightAtPos + 0f,
                         rockZ
                     );
                     

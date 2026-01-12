@@ -30,6 +30,12 @@ public class TurbulenceManager : MonoBehaviour
     [SerializeField] private int generationSeed = 54321;
     [SerializeField] private bool showGeneratedZonesInGame = true; // Показывать генерируемые зоны в Game View
     
+    [Header("Atmosphere Settings")]
+    [SerializeField] private float atmosphereHeight = 1000f; // Высота атмосферы (как у облаков)
+    [SerializeField] private bool useAtmosphereLimit = true;
+    [SerializeField] private bool generateFullAtmosphereHeight = true; // Генерировать зоны во всем диапазоне высот атмосферы
+    [SerializeField] private bool generateAroundShipHeight = true; // Генерировать зоны вокруг высоты корабля
+    
     [Header("Tracking Settings")]
     [SerializeField] private Transform trackingTarget;
     [SerializeField] private float generationUpdateInterval = 1f; // Как у облаков - обновление каждую секунду
@@ -40,6 +46,7 @@ public class TurbulenceManager : MonoBehaviour
     
     private float lastUpdateTime = 0f;
     private float lastGenerationUpdateTime = 0f;
+    private float lastShipHeight = 0f; // Отслеживание изменения высоты корабля
     private ShipController shipController;
     private Dictionary<Vector2Int, List<TurbulenceZone>> zoneChunks = new Dictionary<Vector2Int, List<TurbulenceZone>>();
     private Vector2Int lastChunkCoord = Vector2Int.zero;
@@ -94,6 +101,42 @@ public class TurbulenceManager : MonoBehaviour
             {
                 lastGenerationUpdateTime = Time.time;
                 UpdateZoneGeneration();
+            }
+            
+            // При полной генерации атмосферы также проверяем изменение высоты в реальном времени
+            if (generateFullAtmosphereHeight && trackingTarget != null)
+            {
+                float currentShipHeight = trackingTarget.position.y;
+                float heightDifference = Mathf.Abs(currentShipHeight - lastShipHeight);
+                
+                // Если высота изменилась значительно, сразу обновляем чанки
+                if (heightDifference > 30f) // Более чувствительная проверка для полной генерации
+                {
+                    lastShipHeight = currentShipHeight;
+                    // Быстро проверяем и догенерируем зоны в текущих чанках
+                    Vector2Int currentChunk = GetChunkCoordinate(trackingTarget.position);
+                    for (int x = -1; x <= 1; x++)
+                    {
+                        for (int z = -1; z <= 1; z++)
+                        {
+                            Vector2Int chunkCoord = new Vector2Int(currentChunk.x + x, currentChunk.y + z);
+                            if (zoneChunks.ContainsKey(chunkCoord))
+                            {
+                                zoneChunks[chunkCoord].RemoveAll(zone => zone == null);
+                                if (zoneChunks[chunkCoord].Count < zonesPerChunk)
+                                {
+                                    int toGenerate = Mathf.Max(1, (zonesPerChunk - zoneChunks[chunkCoord].Count) / 2);
+                                    GenerateZonesInChunk(chunkCoord, toGenerate);
+                                }
+                            }
+                            else
+                            {
+                                // Чанк не существует - создаем его
+                                GenerateChunk(chunkCoord);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -208,6 +251,7 @@ public class TurbulenceManager : MonoBehaviour
         
         Vector2Int currentChunk = GetChunkCoordinate(trackingTarget.position);
         lastChunkCoord = currentChunk;
+        lastShipHeight = trackingTarget.position.y; // Инициализируем отслеживание высоты
         
         // Генерируем зоны в начальных чанках
         for (int x = -loadRadius; x <= loadRadius; x++)
@@ -351,6 +395,45 @@ public class TurbulenceManager : MonoBehaviour
         }
     }
     
+    private void GenerateZonesInChunk(Vector2Int chunkCoord, int count)
+    {
+        if (!zoneChunks.ContainsKey(chunkCoord))
+        {
+            zoneChunks[chunkCoord] = new List<TurbulenceZone>();
+        }
+        
+        int baseSeed = GetSeedForChunk(chunkCoord);
+        int startIndex = zoneChunks[chunkCoord].Count;
+        
+        if (showDebugInfo)
+        {
+            Debug.Log($"TurbulenceManager: Догенерирую {count} зон в чанке {chunkCoord}, seed={baseSeed}");
+        }
+        
+        for (int i = 0; i < count; i++)
+        {
+            int zoneIndex = startIndex + i;
+            Vector3 zonePosition = GetRandomPositionInChunk(chunkCoord, zoneIndex, baseSeed);
+            TurbulenceZone zone = CreateTurbulenceZone(zonePosition, chunkCoord, zoneIndex, baseSeed);
+            
+            if (zone != null)
+            {
+                zoneChunks[chunkCoord].Add(zone);
+                turbulenceZones.Add(zone);
+                
+                if (showDebugInfo)
+                {
+                    Debug.Log($"TurbulenceManager: Создана дополнительная зона {zoneIndex} в чанке {chunkCoord} на позиции {zonePosition}");
+                }
+            }
+        }
+        
+        if (showDebugInfo)
+        {
+            Debug.Log($"TurbulenceManager: В чанке {chunkCoord} теперь {zoneChunks[chunkCoord].Count} зон");
+        }
+    }
+    
     private int GetSeedForChunk(Vector2Int chunkCoord)
     {
         // Используем координаты чанка для создания уникального сида
@@ -371,32 +454,83 @@ public class TurbulenceManager : MonoBehaviour
         // Высота земли
         float groundHeight = HillGenerator.GetHeightAtPosition(new Vector3(worldX, 0f, worldZ));
         
-        // Высота зоны над землей (но не слишком высоко от корабля)
-        float heightAboveGround = Random.Range(minHeightAboveGround, maxHeightAboveGround);
-        float y = groundHeight + heightAboveGround;
+        float y;
         
-        // Ограничиваем высоту зон - они должны быть в разумных пределах от корабля
-        if (trackingTarget != null)
+        if (generateFullAtmosphereHeight && useAtmosphereLimit)
         {
+            // Генерируем зоны во всем диапазоне высот атмосферы (от минимальной высоты над землей до конца атмосферы)
+            // Равномерное распределение по всей высоте атмосферы, независимо от высоты корабля
+            float maxAtmosphereY = atmosphereHeight;
+            float minZoneY = groundHeight + minHeightAboveGround;
+            float maxZoneY = maxAtmosphereY - 10f; // Отступ от верхней границы атмосферы
+            
+            // Генерируем зоны во всем диапазоне высот атмосферы равномерно
+            // Используем уникальный сид для высоты, чтобы каждая зона получала уникальную высоту
+            Random.InitState(baseSeed + zoneIndex * 17 + (int)(Time.time * 50) % 1000);
+            y = Random.Range(minZoneY, maxZoneY);
+            
+            // При полной генерации атмосферы НЕ учитываем высоту корабля - генерируем равномерно везде
+            // Это гарантирует, что при взлете будут видны зоны на всех уровнях
+        }
+        else if (generateAroundShipHeight && trackingTarget != null)
+        {
+            // Генерируем зоны СТРОГО ВЫШЕ корабля (не ниже, не на той же высоте)
             float shipHeight = trackingTarget.position.y;
-            // Зоны должны быть в диапазоне от корабля до корабля + maxHeightAboveGround
-            float minHeightFromShip = Mathf.Max(groundHeight + minHeightAboveGround, shipHeight - 50f); // Не ниже корабля более чем на 50м
-            float maxHeightFromShip = shipHeight + maxHeightAboveGround; // Не выше корабля более чем на maxHeightAboveGround
             
-            y = Mathf.Clamp(y, minHeightFromShip, maxHeightFromShip);
+            // Минимальный отступ вверх от корабля (зона должна быть выше корабля)
+            float minOffsetAboveShip = 50f;
             
-            if (showDebugInfo)
+            // Базовое смещение ВВЕРХ от корабля
+            float baseOffsetUp = minOffsetAboveShip;
+            
+            // Максимальная высота генерации выше корабля
+            float maxHeightAboveShip = maxHeightAboveGround;
+            
+            // Генерируем зону выше корабля
+            Random.InitState(baseSeed + zoneIndex * 23);
+            float offsetAboveShip = Random.Range(baseOffsetUp, maxHeightAboveShip);
+            y = shipHeight + offsetAboveShip;
+            
+            // Ограничиваем максимальной высотой атмосферы, если включено
+            if (useAtmosphereLimit)
             {
-                Debug.Log($"TurbulenceManager: Позиция зоны в чанке {chunkCoord}: X={worldX:F1}, Z={worldZ:F1}, Y={y:F1} " +
-                         $"(земля={groundHeight:F1}, корабль Y={shipHeight:F1}, диапазон {minHeightFromShip:F1}-{maxHeightFromShip:F1})");
+                float maxAtmosphereY = atmosphereHeight;
+                y = Mathf.Min(y, maxAtmosphereY - 10f);
             }
+            
+            // Не ниже минимальной высоты над землей
+            y = Mathf.Max(y, groundHeight + minHeightAboveGround);
         }
         else
         {
-            if (showDebugInfo)
+            // Старая логика: высота зоны над землей (но не слишком высоко от корабля)
+            float heightAboveGround = Random.Range(minHeightAboveGround, maxHeightAboveGround);
+            y = groundHeight + heightAboveGround;
+            
+            // Ограничиваем высоту зон - они должны быть в разумных пределах от корабля
+            if (trackingTarget != null)
             {
-                Debug.Log($"TurbulenceManager: Позиция зоны в чанке {chunkCoord}: X={worldX:F1}, Z={worldZ:F1}, Y={y:F1} (земля={groundHeight:F1}, trackingTarget=null)");
+                float shipHeight = trackingTarget.position.y;
+                // Зоны должны быть в диапазоне от корабля до корабля + maxHeightAboveGround
+                float minHeightFromShip = Mathf.Max(groundHeight + minHeightAboveGround, shipHeight - 50f); // Не ниже корабля более чем на 50м
+                float maxHeightFromShip = shipHeight + maxHeightAboveGround; // Не выше корабля более чем на maxHeightAboveGround
+                
+                y = Mathf.Clamp(y, minHeightFromShip, maxHeightFromShip);
             }
+            
+            // Ограничиваем максимальной высотой атмосферы, если включено
+            if (useAtmosphereLimit)
+            {
+                float maxAtmosphereY = atmosphereHeight;
+                y = Mathf.Min(y, maxAtmosphereY - 10f);
+            }
+        }
+        
+        if (showDebugInfo)
+        {
+            string heightInfo = trackingTarget != null ? $", корабль Y={trackingTarget.position.y:F1}" : "";
+            Debug.Log($"TurbulenceManager: Позиция зоны в чанке {chunkCoord}: X={worldX:F1}, Z={worldZ:F1}, Y={y:F1} " +
+                     $"(земля={groundHeight:F1}{heightInfo}, атмосфера до {atmosphereHeight:F1})");
         }
         
         return new Vector3(worldX, y, worldZ);

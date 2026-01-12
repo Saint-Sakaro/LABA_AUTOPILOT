@@ -116,6 +116,42 @@ public static class HillGenerator
         return (seedX ^ seedZ) + SEED_OFFSET;
     }
 
+    /// <summary>
+    /// Вычисляет нормаль поверхности в указанной позиции
+    /// </summary>
+    public static Vector3 GetSurfaceNormal(Vector3 position, float sampleDistance = 1f)
+    {
+        float centerHeight = GetHeightAtPosition(position);
+        
+        // Вычисляем высоты в четырех направлениях
+        Vector3 right = position + Vector3.right * sampleDistance;
+        right.y = GetHeightAtPosition(right);
+        
+        Vector3 forward = position + Vector3.forward * sampleDistance;
+        forward.y = GetHeightAtPosition(forward);
+        
+        Vector3 left = position + Vector3.left * sampleDistance;
+        left.y = GetHeightAtPosition(left);
+        
+        Vector3 back = position + Vector3.back * sampleDistance;
+        back.y = GetHeightAtPosition(back);
+        
+        // Вычисляем два вектора для определения нормали
+        Vector3 v1 = (right - left).normalized;
+        Vector3 v2 = (forward - back).normalized;
+        
+        // Нормаль = векторное произведение
+        Vector3 normal = Vector3.Cross(v2, v1).normalized;
+        
+        // Убеждаемся, что нормаль направлена вверх
+        if (normal.y < 0)
+        {
+            normal = -normal;
+        }
+        
+        return normal;
+    }
+    
     public static void ClearCache()
     {
         hillCache.Clear();

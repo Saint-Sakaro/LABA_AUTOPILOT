@@ -15,7 +15,6 @@ public static class TreeGenerator
     private const float TREE_SPACING = 200f;
     private const int SEED_OFFSET = 54321;
     
-    // Высоты деревьев (установите правильные значения вручную)
     private static float[] treeHeights = new float[] { 507.141f, 399.7712f, 321.909f, 397.7243f, 542.9211f };
     private static GameObject[] treePrefabs = new GameObject[5];
 
@@ -48,8 +47,9 @@ public static class TreeGenerator
                 
                 foreach (Tree tree in treeCache[sectorCoord])
                 {
-                    if (tree.position.x >= minX - 100f && tree.position.x < maxX + 100f &&
-                        tree.position.z >= minZ - 100f && tree.position.z < maxZ + 100f)
+                    // ИСПРАВЛЕНО: убран запас в 100 единиц - деревья только в пределах платформы
+                    if (tree.position.x >= minX && tree.position.x < maxX &&
+                        tree.position.z >= minZ && tree.position.z < maxZ)
                     {
                         treesForPlatform.Add(new TreeData(tree.position, tree.treeType, tree.rotation));
                     }
@@ -72,7 +72,6 @@ public static class TreeGenerator
         {
             for (float z = sectorCenterZ - TREE_SPACING * 1.5f; z <= sectorCenterZ + TREE_SPACING * 1.5f; z += TREE_SPACING)
             {
-                // Уникальный seed для каждой позиции в цикле
                 int gridX = Mathf.FloorToInt(x / TREE_SPACING);
                 int gridZ = Mathf.FloorToInt(z / TREE_SPACING);
                 int uniqueSeed = (gridX * 73856093) ^ (gridZ * 19349663) ^ SEED_OFFSET ^ treeCounter;
@@ -84,10 +83,12 @@ public static class TreeGenerator
                 {
                     float offsetX = Random.Range(-TREE_SPACING * 0.4f, TREE_SPACING * 0.4f);
                     float offsetZ = Random.Range(-TREE_SPACING * 0.4f, TREE_SPACING * 0.4f);
+                    
                     float treeX = x + offsetX;
                     float treeZ = z + offsetZ;
                     
                     float heightAtPos = HillGenerator.GetHeightAtPosition(new Vector3(treeX, 0, treeZ));
+                    
                     int treeType = Random.Range(0, 5);
                     float rotation = Random.Range(0f, Mathf.PI * 2f);
                     
@@ -110,7 +111,6 @@ public static class TreeGenerator
         return trees;
     }
 
-
     private static Vector2Int GetSectorCoordinate(Vector2 pos)
     {
         return new Vector2Int(
@@ -121,7 +121,6 @@ public static class TreeGenerator
 
     private static int GetSeedForPosition(float x, float z)
     {
-        // ИСПРАВЛЕНО: используем более предсказуемый метод расчёта seed
         int seedX = Mathf.RoundToInt(x) * 73856093;
         int seedZ = Mathf.RoundToInt(z) * 19349663;
         return Mathf.Abs(seedX ^ seedZ) + SEED_OFFSET;

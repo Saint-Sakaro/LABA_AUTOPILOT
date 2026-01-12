@@ -107,6 +107,7 @@ public class ShipController : MonoBehaviour
     [SerializeField] private ShipThrusterManager thrusterManager;
     [SerializeField] private VolumetricCloudManager cloudManager;
     [SerializeField] private TurbulenceManager turbulenceManager;
+    [SerializeField] private FuelManager fuelManager;
     
     [Header("Turbulence")]
     [SerializeField] private bool useTurbulence = true;
@@ -164,6 +165,12 @@ public class ShipController : MonoBehaviour
         if (thrusterManager == null)
         {
             thrusterManager = GetComponent<ShipThrusterManager>();
+        }
+        
+        // Находим FuelManager
+        if (fuelManager == null)
+        {
+            fuelManager = FindObjectOfType<FuelManager>();
         }
 
 
@@ -610,6 +617,9 @@ public class ShipController : MonoBehaviour
 
 
         HandleThrustInput();
+        
+        // Проверяем топливо и отключаем двигатели, если топливо закончилось
+        CheckFuelAndDisableEnginesIfEmpty();
 
 
         if (autoDetectEnvironment)
@@ -1081,9 +1091,12 @@ public class ShipController : MonoBehaviour
 
     private void HandleThrustInput()
     {
+        // Проверяем топливо перед обработкой ввода
+        bool hasFuel = HasFuel();
+        
         float targetThrust = currentThrust;
 
-        if (Input.GetKey(KeyCode.W) == true)
+        if (Input.GetKey(KeyCode.W) == true && hasFuel)
         {
             float newThrust = currentThrust + thrustChangeSpeed * Time.deltaTime;
             if (newThrust > 1f)
@@ -1114,6 +1127,12 @@ public class ShipController : MonoBehaviour
             {
                 targetThrust = newThrust;
             }
+        }
+        
+        // Если нет топлива, принудительно устанавливаем тягу в 0
+        if (!hasFuel)
+        {
+            targetThrust = 0f;
         }
 
         float lerpFactor = Time.deltaTime * thrustChangeSpeed;
@@ -1182,6 +1201,25 @@ public class ShipController : MonoBehaviour
         
         if (engines.Count == 0)
         {
+            return;
+        }
+        
+        // Проверяем топливо - если его нет, не применяем тягу
+        if (!HasFuel())
+        {
+            // Отключаем все двигатели
+            for (int i = 0; i < engines.Count; i++)
+            {
+                if (i < engineThrusts.Length)
+                {
+                    engineThrusts[i] = 0f;
+                }
+                if (engines[i] != null)
+                {
+                    engines[i].SetThrust(0f);
+                }
+            }
+            currentThrust = 0f;
             return;
         }
 
@@ -2123,6 +2161,76 @@ public class ShipController : MonoBehaviour
     public bool IsWindEnabled()
     {
         return useWind;
+    }
+    
+    /// <summary>
+    /// Получает суммарную тягу всех двигателей (0-1)
+    /// </summary>
+    public float GetTotalEngineThrust()
+    {
+        if (engines.Count == 0)
+        {
+            return 0f;
+        }
+        
+        float totalThrust = 0f;
+        foreach (float thrust in engineThrusts)
+        {
+            totalThrust += thrust;
+        }
+        
+        // Возвращаем среднюю тягу всех двигателей
+        return totalThrust / engines.Count;
+    }
+    
+    /// <summary>
+    /// Получает массив тяги всех двигателей
+    /// </summary>
+    public float[] GetEngineThrusts()
+    {
+        return (float[])engineThrusts.Clone();
+    }
+    
+    /// <summary>
+    /// Проверяет, есть ли топливо
+    /// </summary>
+    private bool HasFuel()
+    {
+        if (fuelManager == null)
+        {
+            return true; // Если FuelManager не найден, разрешаем работу двигателей
+        }
+        
+        float totalFuel = fuelManager.GetTotalFuel();
+        return totalFuel > 0.1f; // Небольшой запас для предотвращения дрожания
+    }
+    
+    /// <summary>
+    /// Проверяет топливо и отключает двигатели, если топливо закончилось
+    /// </summary>
+    private void CheckFuelAndDisableEnginesIfEmpty()
+    {
+        if (!HasFuel() && currentThrust > 0.01f)
+        {
+            // Топливо закончилось, но двигатели еще работают - отключаем их
+            currentThrust = 0f;
+            for (int i = 0; i < engines.Count; i++)
+            {
+                if (i < engineThrusts.Length)
+                {
+                    engineThrusts[i] = 0f;
+                }
+                if (engines[i] != null)
+                {
+                    engines[i].SetThrust(0f);
+                }
+            }
+            
+            if (showDebugInfo && Time.frameCount % 60 == 0)
+            {
+                Debug.LogWarning("ShipController: Топливо закончилось! Двигатели отключены.");
+            }
+        }
     }
 
     private void UpdateCloudWind()

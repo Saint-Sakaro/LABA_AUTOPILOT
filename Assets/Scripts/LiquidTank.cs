@@ -3,8 +3,8 @@ using UnityEngine;
 public class LiquidTank : MonoBehaviour
 {
     [Header("Жидкость")]
-    [SerializeField] private float maxVolume = 1000f; 
-    [SerializeField] private float currentVolume = 1000f; 
+    [SerializeField] private float maxVolume = 500f; 
+    [SerializeField] private float currentVolume = 500f; 
     [SerializeField] private float liquidDensity = 0.8f; 
     
     [Header("Убывание (расход топлива)")]
@@ -42,6 +42,8 @@ public class LiquidTank : MonoBehaviour
     
     private void Update()
     {
+        // Расход топлива теперь управляется FuelManager, а не здесь
+        // Оставляем только для обратной совместимости, если FuelManager не используется
         if (isConsuming && currentVolume > 0)
         {
             float consumption = consumptionRate * Time.deltaTime;
@@ -120,4 +122,21 @@ public class LiquidTank : MonoBehaviour
     public Vector3 GetCenterOfMass() => centerOfMass;
     public bool HasLeak() => hasLeak;
     public float GetFillPercentage() => currentVolume / maxVolume;
+    public float GetMaxVolume() => maxVolume;
+    
+    /// <summary>
+    /// Устанавливает потребление топлива извне (например, от FuelManager)
+    /// </summary>
+    public void SetConsumptionRate(float rate)
+    {
+        consumptionRate = rate;
+    }
+    
+    /// <summary>
+    /// Отключает автоматическое потребление (для использования с FuelManager)
+    /// </summary>
+    public void DisableAutoConsumption()
+    {
+        isConsuming = false;
+    }
 }

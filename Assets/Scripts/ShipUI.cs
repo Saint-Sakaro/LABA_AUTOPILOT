@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections.Generic;
 
 
 
@@ -9,6 +10,7 @@ public class ShipUI : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private ShipController shipController;
+    [SerializeField] private FuelManager fuelManager;
 
     [Header("Speed Display")]
     [SerializeField] private TextMeshProUGUI speedText;
@@ -38,6 +40,24 @@ public class ShipUI : MonoBehaviour
     [SerializeField] private bool showWindControl = true;
     [SerializeField] private bool use3DWindVisualizer = true;
 
+    [Header("Fuel Display")]
+    [SerializeField] private bool showFuelDisplay = true;
+    [SerializeField] private TextMeshProUGUI fuelText;
+    [SerializeField] private string fuelFormat = "Топливо: {0:F1}/{1:F1} л ({2:P0})";
+    [SerializeField] private Color normalFuelColor = Color.green;
+    [SerializeField] private Color lowFuelColor = Color.yellow;
+    [SerializeField] private Color criticalFuelColor = Color.red;
+    
+    [Header("Landing Radar Display")]
+    [SerializeField] private bool showRadarDisplay = true;
+    [SerializeField] private LandingRadar landingRadar;
+    [SerializeField] private TextMeshProUGUI radarStatusText;
+    [SerializeField] private TextMeshProUGUI radarBestSiteText;
+    [SerializeField] private string radarStatusFormat = "Радар: {0} площадок";
+    [SerializeField] private string radarBestSiteFormat = "Лучшая: {0:F0}м, {1:F0}%, {2:F1}°";
+    [SerializeField] private Color radarGoodColor = Color.green;
+    [SerializeField] private Color radarWarningColor = Color.yellow;
+    
     [Header("Update Settings")]
     [SerializeField] private float updateInterval = 0.1f;
 
@@ -56,6 +76,33 @@ public class ShipUI : MonoBehaviour
             Debug.LogError("ShipUI: ShipController не найден! Назначьте его в Inspector.");
             enabled = false;
             return;
+        }
+        
+        // Находим FuelManager
+        if (fuelManager == null)
+        {
+            fuelManager = FindObjectOfType<FuelManager>();
+        }
+        
+        if (fuelManager == null && showFuelDisplay)
+        {
+            Debug.LogWarning("ShipUI: FuelManager не найден! UI топлива не будет отображаться.");
+        }
+        
+        // Находим LandingRadar
+        if (landingRadar == null && showRadarDisplay)
+        {
+            landingRadar = FindObjectOfType<LandingRadar>();
+        }
+        
+        if (landingRadar == null && showRadarDisplay)
+        {
+            Debug.LogWarning("ShipUI: LandingRadar не найден! UI радара не будет отображаться.");
+        }
+        else if (landingRadar != null && showRadarDisplay)
+        {
+            // Подписываемся на обновления радара
+            landingRadar.OnSitesUpdated += OnRadarSitesUpdated;
         }
 
 
@@ -224,6 +271,18 @@ public class ShipUI : MonoBehaviour
             UpdateWindDirectionHorizontalText();
             UpdateWindDirectionVerticalText();
         }
+        
+        // Обновляем отображение топлива
+        if (showFuelDisplay)
+        {
+            UpdateFuelDisplay();
+        }
+        
+        // Обновляем отображение радара
+        if (showRadarDisplay)
+        {
+            UpdateRadarDisplay();
+        }
     }
 
 
@@ -371,6 +430,80 @@ public class ShipUI : MonoBehaviour
 
 
 
+    private void UpdateFuelDisplay()
+    {
+        if (fuelManager == null) return;
+        
+        float totalFuel = fuelManager.GetTotalFuel();
+        float totalMaxFuel = fuelManager.GetTotalMaxFuel();
+        float fuelPercentage = fuelManager.GetFuelPercentage();
+        
+        // Обновляем текст
+        if (fuelText != null)
+        {
+            fuelText.text = string.Format(fuelFormat, totalFuel, totalMaxFuel, fuelPercentage);
+            
+            // Меняем цвет текста в зависимости от уровня топлива
+            if (fuelPercentage <= 0.1f) // Критический уровень
+            {
+                fuelText.color = criticalFuelColor;
+            }
+            else if (fuelPercentage <= 0.2f) // Низкий уровень
+            {
+                fuelText.color = lowFuelColor;
+            }
+            else
+            {
+                fuelText.color = normalFuelColor;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Обновляет отображение информации о радаре
+    /// </summary>
+    private void UpdateRadarDisplay()
+    {
+        if (landingRadar == null) return;
+        
+        List<LandingSite> sites = landingRadar.GetFoundSites();
+        
+        // Обновляем статус радара
+        if (radarStatusText != null)
+        {
+            radarStatusText.text = string.Format(radarStatusFormat, sites.Count);
+            radarStatusText.color = sites.Count > 0 ? radarGoodColor : radarWarningColor;
+        }
+        
+        // Обновляем информацию о лучшей площадке
+        if (radarBestSiteText != null)
+        {
+            if (sites.Count > 0)
+            {
+                LandingSite bestSite = sites[0];
+                radarBestSiteText.text = string.Format(radarBestSiteFormat, 
+                    bestSite.distanceFromShip, 
+                    bestSite.suitabilityScore * 100f, 
+                    bestSite.slopeAngle);
+                radarBestSiteText.color = bestSite.suitabilityScore >= 0.7f ? radarGoodColor : radarWarningColor;
+            }
+            else
+            {
+                radarBestSiteText.text = "Площадки не найдены";
+                radarBestSiteText.color = radarWarningColor;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Обработчик события обновления площадок радара
+    /// </summary>
+    private void OnRadarSitesUpdated(List<LandingSite> sites)
+    {
+        // Обновляем UI сразу при получении новых данных
+        UpdateRadarDisplay();
+    }
+    
     private void OnDestroy()
     {
         if (centerOfMassSlider != null)
@@ -392,6 +525,16 @@ public class ShipUI : MonoBehaviour
         {
             windDirectionVerticalSlider.onValueChanged.RemoveListener(OnWindDirectionVerticalSliderChanged);
         }
+        
+        // Отписываемся от событий радара
+        if (landingRadar != null)
+        {
+            landingRadar.OnSitesUpdated -= OnRadarSitesUpdated;
+        }
+        
+        // Отписываемся от событий FuelManager (если была подписка)
+        // Примечание: В текущей реализации используется периодическое обновление через UpdateFuelDisplay()
+        // вместо подписки на события, поэтому отписка не требуется
     }
 }
 
