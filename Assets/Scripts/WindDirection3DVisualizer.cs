@@ -289,14 +289,10 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
     {
         if (!isDragging && shipController != null)
         {
-            float horizontal = shipController.GetWindDirectionHorizontal();
+            float x, z;
+            shipController.GetWindHorizontalXZ(out x, out z);
             
-            float horizontalRad = horizontal * Mathf.Deg2Rad;
-            
-            float x = Mathf.Sin(horizontalRad);
-            float z = Mathf.Cos(horizontalRad);
-            
-            Vector2 newDirection = new Vector2(x, -z);
+            Vector2 newDirection = new Vector2(x, z);
             if (Vector2.Distance(currentDirection, newDirection) > 0.01f)
             {
                 currentDirection = newDirection;
@@ -344,27 +340,34 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
         Vector2 center = sphereContainer.rect.center;
         Vector2 offset = localPoint - center;
         
-        float distance = offset.magnitude;
+        // Для квадратного компаса: ограничиваем X и Z независимо до [-sphereRadius, sphereRadius]
+        float clampedX = Mathf.Clamp(offset.x, -sphereRadius, sphereRadius);
+        float clampedZ = Mathf.Clamp(offset.y, -sphereRadius, sphereRadius);
         
-        if (distance > sphereRadius)
+        // Нормализуем в диапазон [-1, 1] для X и Z
+        float normalizedX = clampedX / sphereRadius;
+        float normalizedZ = clampedZ / sphereRadius;
+        
+        // Вычисляем угол направления ветра из нормализованных координат
+        float horizontalAngle = 0f;
+        if (Mathf.Abs(normalizedX) > 0.01f || Mathf.Abs(normalizedZ) > 0.01f)
         {
-            offset = offset.normalized * sphereRadius;
-            distance = sphereRadius;
+            horizontalAngle = Mathf.Atan2(normalizedX, normalizedZ) * Mathf.Rad2Deg;
+            horizontalAngle = (horizontalAngle + 360f) % 360f;
         }
         
-        float x = offset.x / sphereRadius;
-        float z = offset.y / sphereRadius;
-        
-        float horizontalAngle = Mathf.Atan2(x, z) * Mathf.Rad2Deg;
-        horizontalAngle = (horizontalAngle + 360f) % 360f;
+        // Сила горизонтального ветра = длина вектора (нормализованная) в диапазоне [0, sqrt(2)]
+        // Но ограничиваем до 1 для квадрата (чтобы максимальная сила была 1)
+        float horizontalStrength = Mathf.Clamp01(Mathf.Sqrt(normalizedX * normalizedX + normalizedZ * normalizedZ));
         
         if (shipController != null)
         {
-            float currentVertical = shipController.GetWindDirectionVertical();
-            shipController.SetWindDirection(horizontalAngle, currentVertical);
+            // Для квадратного компаса: передаем X и Z напрямую
+            shipController.SetWindHorizontalXZ(normalizedX, normalizedZ);
         }
         
-        currentDirection = new Vector2(x, z);
+        // Сохраняем нормализованное направление для визуализации
+        currentDirection = new Vector2(normalizedX, normalizedZ);
         UpdateVisualization();
     }
     
@@ -372,48 +375,46 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
     {
         if (shipController != null)
         {
-            float horizontal = shipController.GetWindDirectionHorizontal();
-            float vertical = shipController.GetWindDirectionVertical();
-            
-            float horizontalRad = horizontal * Mathf.Deg2Rad;
-            
-            float x = Mathf.Sin(horizontalRad);
-            float z = Mathf.Cos(horizontalRad);
+            // Получаем X и Z напрямую для квадратного компаса
+            float x, z;
+            shipController.GetWindHorizontalXZ(out x, out z);
             
             currentDirection = new Vector2(x, z);
             
             if (directionIndicator != null && sphereContainer != null)
             {
+                // Для квадратного компаса: позиция = X и Z напрямую (в пикселях)
                 Vector2 position = new Vector2(x * sphereRadius, z * sphereRadius);
                 directionIndicator.anchoredPosition = position;
             }
             
+            // Для текста используем угол
+            float horizontalAngle = Mathf.Atan2(x, z) * Mathf.Rad2Deg;
+            horizontalAngle = (horizontalAngle + 360f) % 360f;
+            
             if (directionText != null)
             {
                 string description = "";
-                if (horizontal >= 337.5f || horizontal < 22.5f) description = "Дует с СЕВЕРА";
-                else if (horizontal >= 22.5f && horizontal < 67.5f) description = "Дует с СЕВЕРО-ВОСТОКА";
-                else if (horizontal >= 67.5f && horizontal < 112.5f) description = "Дует с ВОСТОКА";
-                else if (horizontal >= 112.5f && horizontal < 157.5f) description = "Дует с ЮГО-ВОСТОКА";
-                else if (horizontal >= 157.5f && horizontal < 202.5f) description = "Дует с ЮГА";
-                else if (horizontal >= 202.5f && horizontal < 247.5f) description = "Дует с ЮГО-ЗАПАДА";
-                else if (horizontal >= 247.5f && horizontal < 292.5f) description = "Дует с ЗАПАДА";
+                if (horizontalAngle >= 337.5f || horizontalAngle < 22.5f) description = "Дует с СЕВЕРА";
+                else if (horizontalAngle >= 22.5f && horizontalAngle < 67.5f) description = "Дует с СЕВЕРО-ВОСТОКА";
+                else if (horizontalAngle >= 67.5f && horizontalAngle < 112.5f) description = "Дует с ВОСТОКА";
+                else if (horizontalAngle >= 112.5f && horizontalAngle < 157.5f) description = "Дует с ЮГО-ВОСТОКА";
+                else if (horizontalAngle >= 157.5f && horizontalAngle < 202.5f) description = "Дует с ЮГА";
+                else if (horizontalAngle >= 202.5f && horizontalAngle < 247.5f) description = "Дует с ЮГО-ЗАПАДА";
+                else if (horizontalAngle >= 247.5f && horizontalAngle < 292.5f) description = "Дует с ЗАПАДА";
                 else description = "Дует с СЕВЕРО-ЗАПАДА";
                 
                 directionText.text = $"{description}\n" +
-                                   $"Горизонтальный угол: {horizontal:F0}°\n" +
+                                   $"Горизонтальный угол: {horizontalAngle:F0}°\n" +
                                    $"(Вертикаль управляется ползунком)";
                 
                 if (show3DComponents && componentsText != null)
                 {
-                    float horizontalX = Mathf.Sin(horizontalRad);
-                    float horizontalZ = Mathf.Cos(horizontalRad);
-                    float horizontalLength = Mathf.Cos(vertical * Mathf.Deg2Rad);
-                    float verticalY = Mathf.Sin(vertical * Mathf.Deg2Rad);
+                    float verticalStrength = shipController.GetWindVerticalStrength();
                     
-                    float windX = horizontalX * horizontalLength;
-                    float windY = verticalY;
-                    float windZ = horizontalZ * horizontalLength;
+                    float windX = x;
+                    float windZ = z;
+                    float windY = verticalStrength;
                     
                     string xDesc = windX > 0 ? "→ ВОСТОК (X+)" : windX < 0 ? "← ЗАПАД (X-)" : "";
                     string yDesc = windY > 0 ? "↑ ВВЕРХ (Y+)" : windY < 0 ? "↓ ВНИЗ (Y-)" : "";
@@ -433,19 +434,15 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
     {
         if (arrow3D == null || shipController == null) return;
         
-        float horizontalRad = shipController.GetWindDirectionHorizontal() * Mathf.Deg2Rad;
-        float verticalRad = shipController.GetWindDirectionVertical() * Mathf.Deg2Rad;
+        float x, z;
+        shipController.GetWindHorizontalXZ(out x, out z);
+        float verticalStrength = shipController.GetWindVerticalStrength();
         
-        float horizontalX = Mathf.Sin(horizontalRad);
-        float horizontalZ = Mathf.Cos(horizontalRad);
-        float horizontalLength = Mathf.Cos(verticalRad);
-        float verticalY = Mathf.Sin(verticalRad);
-        
-        Vector3 windDirectionWorld = new Vector3(
-            horizontalX * horizontalLength,
-            verticalY,
-            horizontalZ * horizontalLength
-        ).normalized;
+        Vector3 windDirectionWorld = new Vector3(x, verticalStrength, z);
+        if (windDirectionWorld.magnitude > 0.01f)
+        {
+            windDirectionWorld = windDirectionWorld.normalized;
+        }
         
         arrow3D.transform.position = shipController.transform.position;
         arrow3D.transform.rotation = Quaternion.LookRotation(-windDirectionWorld);

@@ -126,7 +126,8 @@ public class ShipUI : MonoBehaviour
                 {
                     windDirectionVerticalSlider.minValue = -90f;
                     windDirectionVerticalSlider.maxValue = 90f;
-                    windDirectionVerticalSlider.value = shipController.GetWindDirectionVertical();
+                    float currentStrength = shipController.GetWindVerticalStrength();
+                    windDirectionVerticalSlider.value = currentStrength * 90f;
                     windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
                     windDirectionVerticalSlider.gameObject.SetActive(true);
                     UpdateWindDirectionVerticalText();
@@ -161,7 +162,9 @@ public class ShipUI : MonoBehaviour
                 {
                     windDirectionVerticalSlider.minValue = -90f;
                     windDirectionVerticalSlider.maxValue = 90f;
-                    windDirectionVerticalSlider.value = shipController.GetWindDirectionVertical();
+                    // Преобразуем силу (-1 до +1) в угол для слайдера
+                    float currentStrength = shipController.GetWindVerticalStrength();
+                    windDirectionVerticalSlider.value = currentStrength * 90f;
                     windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
                     windDirectionVerticalSlider.gameObject.SetActive(true);
                     UpdateWindDirectionVerticalText();
@@ -304,8 +307,10 @@ public class ShipUI : MonoBehaviour
     {
         if (windDirectionVerticalText == null || shipController == null) return;
 
-        float direction = shipController.GetWindDirectionVertical();
-        windDirectionVerticalText.text = string.Format(windDirectionVerticalFormat, direction);
+        float strength = shipController.GetWindVerticalStrength();
+        // Преобразуем силу (-1 до +1) в угол для отображения
+        float angle = strength * 90f;
+        windDirectionVerticalText.text = $"Вертикальная сила: {strength:F2} ({angle:F0}°)\n(↑ вверх / ↓ вниз)";
     }
 
 
@@ -355,11 +360,12 @@ public class ShipUI : MonoBehaviour
             return;
         }
 
-        shipController.SetWindDirectionVertical(value);
+        // Преобразуем угол (-90 до +90) в силу (-1 до +1)
+        float strength = value / 90f; // -90° = -1, 0° = 0, +90° = +1
+        shipController.SetWindVerticalStrength(strength);
         UpdateWindDirectionVerticalText();
 
-
-        Debug.Log($"Wind Vertical Direction изменен на: {value:F1}°");
+        Debug.Log($"Wind Vertical Strength изменен на: {strength:F2} (из угла {value:F1}°)");
     }
 
 

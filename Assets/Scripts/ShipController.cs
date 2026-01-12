@@ -44,6 +44,11 @@ public class ShipController : MonoBehaviour
     [SerializeField] private float windStrength = 0f;
     [SerializeField] private float windDirectionHorizontalAngle = 0f;
     [SerializeField] private float windDirectionVerticalAngle = 0f;
+    [SerializeField] private float windHorizontalStrength = 1f; // Сила горизонтального ветра (X, Z) - контролируется компасом (0-1)
+    [SerializeField] private float windHorizontalX = 0f; // Компонента X горизонтального ветра (-1 до +1) - для квадратного компаса
+    [SerializeField] private float windHorizontalZ = 1f; // Компонента Z горизонтального ветра (-1 до +1) - для квадратного компаса
+    [SerializeField] private float windVerticalStrength = 0f; // Сила вертикального ветра (Y) - контролируется слайдером (-1 до +1)
+    [SerializeField] private bool useSquareCompass = true; // Использовать квадратный компас (X, Z напрямую) или круглый (угол + сила)
     [SerializeField] private float maxWindStrength = 1f;
     [SerializeField] private bool showWindGizmo = true;
     [SerializeField] private Color windGizmoColor = Color.cyan;
@@ -1446,35 +1451,46 @@ public class ShipController : MonoBehaviour
             return;
         }
 
-        float degToRad = 0.0174532925f;
-        float horizontalRad = windDirectionHorizontalAngle * degToRad;
-        float verticalRad = windDirectionVerticalAngle * degToRad;
-
-        float horizontalX = Mathf.Sin(horizontalRad);
-        float horizontalZ = Mathf.Cos(horizontalRad);
-
-        float horizontalLength = Mathf.Cos(verticalRad);
-        float verticalY = Mathf.Sin(verticalRad);
-
-        Vector3 windDirectionWorld = new Vector3(
-            horizontalX * horizontalLength,
-            verticalY,
-            horizontalZ * horizontalLength
-        );
+        // Горизонтальная составляющая (X, Z)
+        float horizontalX;
+        float horizontalZ;
+        float horizontalForceStrength;
         
-        windDirectionWorld = windDirectionWorld.normalized;
+        if (useSquareCompass)
+        {
+            // Квадратный компас: используем X и Z напрямую
+            horizontalX = Mathf.Clamp(windHorizontalX, -1f, 1f);
+            horizontalZ = Mathf.Clamp(windHorizontalZ, -1f, 1f);
+            // Сила = длина вектора (для квадрата может быть до sqrt(2), ограничиваем до 1)
+            float vectorLength = Mathf.Sqrt(horizontalX * horizontalX + horizontalZ * horizontalZ);
+            horizontalForceStrength = clampedWindStrength * Mathf.Clamp01(vectorLength);
+        }
+        else
+        {
+            // Круглый компас: используем угол и силу
+            float degToRad = 0.0174532925f;
+            float horizontalRad = windDirectionHorizontalAngle * degToRad;
+            horizontalX = Mathf.Sin(horizontalRad);
+            horizontalZ = Mathf.Cos(horizontalRad);
+            horizontalForceStrength = clampedWindStrength * windHorizontalStrength;
+        }
+
+        // Вертикальная составляющая (Y) - контролируется слайдером
+        float verticalForceStrength = clampedWindStrength * windVerticalStrength; // Сила вертикального ветра
 
         Vector3 windForce = new Vector3(
-            windDirectionWorld.x * clampedWindStrength,
-            windDirectionWorld.y * clampedWindStrength,
-            windDirectionWorld.z * clampedWindStrength
+            horizontalX * horizontalForceStrength,
+            verticalForceStrength,
+            horizontalZ * horizontalForceStrength
         );
 
         Vector3 centerOfMassWorld = shipRigidbody.worldCenterOfMass;
         
         if (enableWindRotation)
         {
-            Vector3 windDirectionLocal = transform.InverseTransformDirection(windDirectionWorld);
+            // Нормализуем вектор силы для расчета центра давления
+            Vector3 windDirectionNormalized = windForce.magnitude > 0.01f ? windForce.normalized : Vector3.zero;
+            Vector3 windDirectionLocal = transform.InverseTransformDirection(windDirectionNormalized);
             Vector3 centerOfPressure = CalculateCenterOfPressure(windDirectionLocal);
             shipRigidbody.AddForceAtPosition(windForce, centerOfPressure, ForceMode.Force);
             
@@ -1499,9 +1515,8 @@ public class ShipController : MonoBehaviour
             {
                 float windForceLength = Mathf.Sqrt(windForce.x * windForce.x + windForce.y * windForce.y + windForce.z * windForce.z);
                 Debug.Log($"Wind (Global): Strength={clampedWindStrength:F1}N, " +
-                         $"Horizontal={windDirectionHorizontalAngle:F1}°, " +
-                         $"Vertical={windDirectionVerticalAngle:F1}°, " +
-                         $"Direction World={windDirectionWorld}, " +
+                         $"Horizontal Angle={windDirectionHorizontalAngle:F1}°, Horizontal Strength={windHorizontalStrength:F2}, " +
+                         $"Vertical Strength={windVerticalStrength:F2}, " +
                          $"Force={windForceLength:F1}N");
             }
         }
@@ -2007,10 +2022,60 @@ public class ShipController : MonoBehaviour
 
     public void SetWindDirectionVertical(float angle)
     {
-
+        // Устаревший метод - теперь используем SetWindVerticalStrength
+        // Оставляем для обратной совместимости, но не используем угол
         windDirectionVerticalAngle = Mathf.Clamp(angle, -90f, 90f);
         
         UpdateCloudWind();
+    }
+    
+    public void SetWindVerticalStrength(float strength)
+    {
+        windVerticalStrength = Mathf.Clamp(strength, -1f, 1f);
+        UpdateCloudWind();
+    }
+    
+    public float GetWindVerticalStrength()
+    {
+        return windVerticalStrength;
+    }
+    
+    public void SetWindHorizontalStrength(float strength)
+    {
+        windHorizontalStrength = Mathf.Clamp01(strength);
+        UpdateCloudWind();
+    }
+    
+    public float GetWindHorizontalStrength()
+    {
+        return windHorizontalStrength;
+    }
+    
+    public void SetWindHorizontalXZ(float x, float z)
+    {
+        windHorizontalX = Mathf.Clamp(x, -1f, 1f);
+        windHorizontalZ = Mathf.Clamp(z, -1f, 1f);
+        
+        // Обновляем угол и силу для обратной совместимости
+        float length = Mathf.Sqrt(x * x + z * z);
+        if (length > 0.01f)
+        {
+            windDirectionHorizontalAngle = Mathf.Atan2(x, z) * Mathf.Rad2Deg;
+            windDirectionHorizontalAngle = (windDirectionHorizontalAngle + 360f) % 360f;
+            windHorizontalStrength = Mathf.Clamp01(length);
+        }
+        else
+        {
+            windHorizontalStrength = 0f;
+        }
+        
+        UpdateCloudWind();
+    }
+    
+    public void GetWindHorizontalXZ(out float x, out float z)
+    {
+        x = windHorizontalX;
+        z = windHorizontalZ;
     }
 
 
@@ -2071,24 +2136,36 @@ public class ShipController : MonoBehaviour
             }
         }
 
-        float degToRad = Mathf.Deg2Rad;
-        float horizontalRad = windDirectionHorizontalAngle * degToRad;
-        float verticalRad = windDirectionVerticalAngle * degToRad;
-
-        float horizontalX = Mathf.Sin(horizontalRad);
-        float horizontalZ = Mathf.Cos(horizontalRad);
-        float horizontalLength = Mathf.Cos(verticalRad);
-        float verticalY = Mathf.Sin(verticalRad);
-
-        Vector3 windDirectionWorld = new Vector3(
-            horizontalX * horizontalLength,
-            verticalY,
-            horizontalZ * horizontalLength
-        ).normalized;
+        // Вычисляем направление ветра
+        float horizontalX, horizontalZ;
+        if (useSquareCompass)
+        {
+            horizontalX = windHorizontalX;
+            horizontalZ = windHorizontalZ;
+        }
+        else
+        {
+            float degToRad = Mathf.Deg2Rad;
+            float horizontalRad = windDirectionHorizontalAngle * degToRad;
+            horizontalX = Mathf.Sin(horizontalRad) * windHorizontalStrength;
+            horizontalZ = Mathf.Cos(horizontalRad) * windHorizontalStrength;
+        }
+        
+        // Вертикальная составляющая (Y)
+        float verticalY = windVerticalStrength;
+        
+        // Формируем вектор направления ветра
+        Vector3 windDirection = new Vector3(horizontalX, verticalY, horizontalZ);
+        
+        // Нормализуем только если вектор не нулевой
+        if (windDirection.magnitude > 0.01f)
+        {
+            windDirection = windDirection.normalized;
+        }
 
         float cloudWindSpeed = Mathf.Max(0f, windStrength / maxWindStrength * 5f);
 
-        cloudManager.SetGlobalWind(windDirectionWorld, cloudWindSpeed);
+        cloudManager.SetGlobalWind(windDirection, cloudWindSpeed);
     }
 
     private void OnDrawGizmos()
@@ -2118,23 +2195,30 @@ public class ShipController : MonoBehaviour
 
         if (showWindGizmo && useWind && windStrength > 0.1f)
         {
+            float horizontalX, horizontalZ;
+            if (useSquareCompass)
+            {
+                horizontalX = windHorizontalX;
+                horizontalZ = windHorizontalZ;
+            }
+            else
+            {
+                float degToRad = Mathf.Deg2Rad;
+                float horizontalRad = windDirectionHorizontalAngle * degToRad;
+                horizontalX = Mathf.Sin(horizontalRad) * windHorizontalStrength;
+                horizontalZ = Mathf.Cos(horizontalRad) * windHorizontalStrength;
+            }
+            
+            float verticalY = windVerticalStrength;
 
-            float horizontalRad = windDirectionHorizontalAngle * Mathf.Deg2Rad;
-            float verticalRad = windDirectionVerticalAngle * Mathf.Deg2Rad;
-
-            float horizontalX = Mathf.Sin(horizontalRad);
-            float horizontalZ = Mathf.Cos(horizontalRad);
-            float horizontalLength = Mathf.Cos(verticalRad);
-            float verticalY = Mathf.Sin(verticalRad);
-
-            Vector3 windDirectionLocal = new Vector3(
-                horizontalX * horizontalLength,
-                verticalY,
-                horizontalZ * horizontalLength
-            ).normalized;
-
-
-            Vector3 windDirectionWorld = transform.TransformDirection(windDirectionLocal);
+            Vector3 windDirectionWorld = new Vector3(horizontalX, verticalY, horizontalZ);
+            if (windDirectionWorld.magnitude > 0.01f)
+            {
+                windDirectionWorld = windDirectionWorld.normalized;
+            }
+            
+            // Преобразуем в локальные координаты для расчета центра давления
+            Vector3 windDirectionLocal = transform.InverseTransformDirection(windDirectionWorld);
 
 
             Vector3 startPos = transform.position;
