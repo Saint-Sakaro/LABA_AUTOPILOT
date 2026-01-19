@@ -26,16 +26,16 @@ public class LandingAutopilot : MonoBehaviour
     
     [Header("Thrust Smoothing")]
     [SerializeField] private float thrustChangeRate = 2f; // Максимальная скорость изменения тяги (в секунду, 0-1)
-    [SerializeField] private float rotationStabilizationStrength = 0.3f; // Сила стабилизации rotation через дифференциальную тягу (0-1)
+    [SerializeField] private float rotationStabilizationStrength = 1.0f; // Сила стабилизации rotation через дифференциальную тягу (0-1) - установлено в 1.0 для максимальной эффективности выравнивания к (0,0,0)
     
     [Header("PID Controllers")]
     [SerializeField] private PIDController verticalSpeedPID = new PIDController(0.5f, 0.05f, 0.2f);
     [SerializeField] private PIDController horizontalSpeedPIDX = new PIDController(0.3f, 0.02f, 0.15f); // Для оси X (влево/вправо)
     [SerializeField] private PIDController horizontalSpeedPIDZ = new PIDController(0.3f, 0.02f, 0.15f); // Для оси Z (вперед/назад)
     [SerializeField] private PIDController orientationPID = new PIDController(2f, 0.1f, 0.5f); // Для выравнивания по нормали поверхности
-    [SerializeField] private PIDController rollStabilizationPID = new PIDController(1.5f, 0.05f, 0.3f); // Для стабилизации крена (roll)
-    [SerializeField] private PIDController yawStabilizationPID = new PIDController(1.5f, 0.05f, 0.3f); // Для стабилизации рыскания (yaw)
-    [SerializeField] private PIDController pitchStabilizationPID = new PIDController(1.5f, 0.05f, 0.3f); // Для стабилизации тангажа (pitch)
+    [SerializeField] private PIDController rollStabilizationPID = new PIDController(2.0f, 0.1f, 0.4f); // Для стабилизации крена (roll) - увеличено для лучшей стабилизации
+    [SerializeField] private PIDController yawStabilizationPID = new PIDController(2.0f, 0.1f, 0.4f); // Для стабилизации рыскания (yaw) - увеличено для лучшей стабилизации
+    [SerializeField] private PIDController pitchStabilizationPID = new PIDController(4.0f, 0.2f, 0.8f); // Для стабилизации тангажа (pitch) - значительно увеличено для точного выравнивания к (0,0,0)
     
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = true;
@@ -112,6 +112,13 @@ public class LandingAutopilot : MonoBehaviour
         {
             Debug.LogWarning($"LandingAutopilot: finalLandingSpeed имеет неправильное значение ({finalLandingSpeed}м/с). Устанавливаю правильное значение: 3м/с");
             finalLandingSpeed = 3f;
+        }
+        
+        // Проверяем alignmentStartHeight (должен быть примерно равен brakingStartHeight или выше)
+        if (alignmentStartHeight < 100f || alignmentStartHeight > 500f)
+        {
+            Debug.LogWarning($"LandingAutopilot: alignmentStartHeight имеет неправильное значение ({alignmentStartHeight}м). Устанавливаю правильное значение: 300м");
+            alignmentStartHeight = 300f;
         }
         
         // Инициализируем PID-регуляторы
@@ -487,8 +494,24 @@ public class LandingAutopilot : MonoBehaviour
         ControlFallSpeed();
         MoveTowardsTarget(targetPosition, approachSpeed);
         
-        // Стабилизация rotation через управление отдельными двигателями (после обновления базовой тяги)
-        StabilizeRotation();
+        // Выравнивание по нормали поверхности, если близко к земле (с высоты alignmentStartHeight)
+        // Вызываем ПОСЛЕ MoveTowardsTarget, чтобы коррекции выравнивания добавлялись к направлению движения
+        float verticalDistance = shipPosition.y - targetPosition.y;
+        if (verticalDistance <= alignmentStartHeight && targetSite != null)
+        {
+            if (showDebugInfo && Time.frameCount % 60 == 0)
+            {
+                Debug.Log($"LandingAutopilot: Выравнивание по нормали поверхности включено (высота: {verticalDistance:F1}м, alignmentStartHeight: {alignmentStartHeight:F1}м)");
+            }
+            AlignToSurfaceNormal(targetSite.surfaceNormal);
+        }
+        else if (showDebugInfo && Time.frameCount % 60 == 0 && targetSite != null)
+        {
+            Debug.Log($"LandingAutopilot: Выравнивание НЕ включено (высота: {verticalDistance:F1}м > alignmentStartHeight: {alignmentStartHeight:F1}м)");
+        }
+        
+        // ВРЕМЕННО: Стабилизация rotation к вертикали (0, 0, 0), игнорируя нормаль поверхности
+        StabilizeRotation(Vector3.up);
     }
     
     /// <summary>
@@ -537,8 +560,8 @@ public class LandingAutopilot : MonoBehaviour
         ControlFallSpeed();
         MoveTowardsTarget(targetPosition, brakingSpeed);
         
-        // Стабилизация rotation через управление отдельными двигателями (после обновления базовой тяги)
-        StabilizeRotation();
+        // ВРЕМЕННО: Стабилизация rotation к вертикали (0, 0, 0), игнорируя нормаль поверхности
+        StabilizeRotation(Vector3.up);
     }
     
     /// <summary>
@@ -584,8 +607,8 @@ public class LandingAutopilot : MonoBehaviour
         ControlFallSpeed(landingSpeed);
         MoveTowardsTarget(targetPosition, landingSpeed);
         
-        // Стабилизация rotation через управление отдельными двигателями (после обновления базовой тяги)
-        StabilizeRotation();
+        // ВРЕМЕННО: Стабилизация rotation к вертикали (0, 0, 0), игнорируя нормаль поверхности
+        StabilizeRotation(Vector3.up);
     }
     
     // ========== УПРАВЛЕНИЕ ==========
@@ -691,7 +714,7 @@ public class LandingAutopilot : MonoBehaviour
             targetMaxSpeed = maxSpeed;
         }
         
-        // Если падаем слишком быстро, увеличиваем тягу
+        // Вычисляем целевую скорость и ошибку
         float targetVerticalSpeed = -targetMaxSpeed; // Отрицательная = вниз
         float verticalSpeedError = targetVerticalSpeed - currentVerticalSpeed;
         
@@ -707,34 +730,106 @@ public class LandingAutopilot : MonoBehaviour
             correctionMultiplier = Mathf.Lerp(0.3f, 1.0f, Mathf.Clamp01((Mathf.Abs(verticalSpeedError) - 5f) / 10f));
         }
         
-        // Если корабль летит вверх (положительная скорость), нужно уменьшить тягу
-        // Если корабль падает вниз (отрицательная скорость), нужно увеличить тягу
+        // ЛОГИКА УПРАВЛЕНИЯ ТЯГОЙ:
+        // - Если currentVerticalSpeed > targetVerticalSpeed (падаем МЕДЛЕННЕЕ, чем нужно) → УМЕНЬШАЕМ тягу
+        // - Если currentVerticalSpeed < targetVerticalSpeed (падаем БЫСТРЕЕ, чем нужно) → УВЕЛИЧИВАЕМ тягу
+        // - Если currentVerticalSpeed > 0 (летим ВВЕРХ) → УСТАНАВЛИВАЕМ тягу 0
         float targetThrust;
         
         if (currentVerticalSpeed > 0f)
         {
             // Корабль летит вверх - нужно его остановить
             // Устанавливаем тягу 0 и полагаемся на гравитацию
-            // Гравитация будет замедлять корабль и в конечном итоге остановит его
             targetThrust = 0f;
         }
         else
         {
-            // Корабль падает вниз - нормальная логика
-            targetThrust = Mathf.Clamp01(hoverThrust + verticalCorrection * correctionMultiplier);
+            // Корабль падает вниз
+            // ЛОГИКА:
+            // - Если currentVerticalSpeed > targetVerticalSpeed (падаем МЕДЛЕННЕЕ, чем нужно) → УМЕНЬШАЕМ тягу
+            // - Если currentVerticalSpeed < targetVerticalSpeed (падаем БЫСТРЕЕ, чем нужно) → УВЕЛИЧИВАЕМ тягу
             
-            // Если скорость падения критически высокая, используем максимальную тягу
-            if (currentVerticalSpeed < -targetMaxSpeed * 1.5f)
+            // verticalCorrection от PID: положительная = нужно увеличить тягу (тормозить), отрицательная = нужно уменьшить тягу (ускорить падение)
+            // Но для правильной работы нужно учесть знак ошибки:
+            // - Если падаем медленнее (currentVerticalSpeed > targetVerticalSpeed), ошибка отрицательная, нужно УМЕНЬШАТЬ тягу
+            // - Если падаем быстрее (currentVerticalSpeed < targetVerticalSpeed), ошибка положительная, нужно УВЕЛИЧИВАТЬ тягу
+            
+            // Проверяем, падаем ли мы медленнее или быстрее целевой скорости
+            if (currentVerticalSpeed > targetVerticalSpeed)
             {
-                targetThrust = 1f; // 100% тяги для экстренного торможения
+                // Падаем МЕДЛЕННЕЕ целевой скорости - нужно УМЕНЬШАТЬ тягу до минимума, чтобы ускорить падение
+                // Чем больше разница, тем меньше должна быть тяга (вплоть до 0)
+                float speedDifference = currentVerticalSpeed - targetVerticalSpeed; // Положительная разница (например, -5.57 - (-100) = 94.43)
+                float normalizedDifference = Mathf.Clamp01(speedDifference / targetMaxSpeed); // Нормализуем (0-1)
+                
+                // Если разница большая (падаем намного медленнее), устанавливаем тягу близко к 0
+                // Если разница маленькая, можем оставить небольшую тягу для стабилизации
+                if (normalizedDifference > 0.5f)
+                {
+                    // Большая разница - устанавливаем тягу очень маленькую (0-10% от hover)
+                    targetThrust = hoverThrust * (1f - normalizedDifference) * 0.2f; // От 0 до 20% от hover
+                }
+                else
+                {
+                    // Малая разница - уменьшаем тягу пропорционально
+                    targetThrust = hoverThrust * (1f - normalizedDifference * 0.5f); // От 50% до 100% от hover
+                }
+                
+                // Минимальная тяга - 0 (не можем иметь отрицательную)
+                targetThrust = Mathf.Max(0f, targetThrust);
+            }
+            else
+            {
+                // Падаем БЫСТРЕЕ целевой скорости - нужно УВЕЛИЧИВАТЬ тягу, чтобы замедлить падение
+                // verticalCorrection уже положительная (нужно увеличить тягу)
+                targetThrust = Mathf.Clamp01(hoverThrust + verticalCorrection * correctionMultiplier);
+                
+                // Если скорость падения критически высокая (падаем слишком быстро), используем максимальную тягу
+                if (currentVerticalSpeed < -targetMaxSpeed * 1.5f)
+                {
+                    targetThrust = 1f; // 100% тяги для экстренного торможения
+                }
             }
         }
         
         // Плавное изменение тяги (не резко!)
+        // Но если нужно быстро уменьшить тягу (падаем медленнее), увеличиваем скорость изменения
         float maxThrustChange = thrustChangeRate * Time.deltaTime;
+        if (currentVerticalSpeed > targetVerticalSpeed && targetThrust < currentThrust)
+        {
+            // Падаем медленнее и нужно уменьшить тягу - увеличиваем скорость изменения в 3 раза
+            maxThrustChange *= 3f;
+        }
         currentThrust = Mathf.MoveTowards(currentThrust, targetThrust, maxThrustChange);
-        // НЕ вызываем SetThrust здесь, чтобы не перезаписать индивидуальные тяги двигателей
-        // StabilizeRotation будет использовать currentThrust как базовую тягу и устанавливать индивидуальные тяги через SetEngineThrust
+        
+        // Если НЕ идет выравнивание по нормали поверхности, обновляем базовую тягу всех двигателей
+        // (если идет выравнивание, AlignToSurfaceNormal сам управляет тягой)
+        if (!isAligningToSurface)
+        {
+            // Обновляем базовую тягу всех двигателей до currentThrust
+            // StabilizeRotation будет использовать currentThrust как базовую и добавлять коррекцию
+            int engineCount = shipController.GetEngineCount();
+            float maxEngineThrustChange = thrustChangeRate * Time.deltaTime;
+            if (currentVerticalSpeed > targetVerticalSpeed && targetThrust < currentThrust)
+            {
+                // Падаем медленнее и нужно уменьшить тягу - увеличиваем скорость изменения в 3 раза
+                maxEngineThrustChange *= 3f;
+            }
+            
+            for (int i = 0; i < engineCount && i < 4; i++)
+            {
+                // Плавно обновляем базовую тягу каждого двигателя до currentThrust
+                // StabilizeRotation добавит коррекцию для стабилизации rotation
+                currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], currentThrust, maxEngineThrustChange);
+                shipController.SetEngineThrust(i, currentEngineThrusts[i]);
+            }
+            
+            // Если двигателей больше 4, обновляем и их
+            for (int i = 4; i < engineCount; i++)
+            {
+                shipController.SetEngineThrust(i, currentThrust);
+            }
+        }
         
         // Логирование
         if (showDebugInfo && Time.frameCount % 60 == 0)
@@ -745,7 +840,29 @@ public class LandingAutopilot : MonoBehaviour
             Debug.Log($"  Целевая максимальная скорость: {targetMaxSpeed:F2}м/с");
             Debug.Log($"  Целевая скорость (отрицательная): {targetVerticalSpeed:F2}м/с");
             Debug.Log($"  Ошибка скорости: {verticalSpeedError:F2}м/с");
-            Debug.Log($"  Тяга: {currentThrust:F2}");
+            Debug.Log($"  hoverThrust: {hoverThrust:F3}");
+            Debug.Log($"  verticalCorrection (от PID): {verticalCorrection:F3}");
+            Debug.Log($"  correctionMultiplier: {correctionMultiplier:F3}");
+            Debug.Log($"  targetThrust: {targetThrust:F3}");
+            Debug.Log($"  Тяга (текущая): {currentThrust:F3}");
+            int engineCount = shipController.GetEngineCount();
+            if (engineCount >= 4)
+            {
+                Debug.Log($"  Тяга двигателей: E0={currentEngineThrusts[0]:F3}, E1={currentEngineThrusts[1]:F3}, E2={currentEngineThrusts[2]:F3}, E3={currentEngineThrusts[3]:F3}");
+            }
+            Debug.Log($"  ЛОГИКА: currentVerticalSpeed={currentVerticalSpeed:F2}, targetVerticalSpeed={targetVerticalSpeed:F2}");
+            if (currentVerticalSpeed > 0f)
+            {
+                Debug.Log($"    → Корабль летит ВВЕРХ → targetThrust=0");
+            }
+            else if (currentVerticalSpeed > targetVerticalSpeed)
+            {
+                Debug.Log($"    → Падаем МЕДЛЕННЕЕ целевой скорости → УМЕНЬШАЕМ тягу");
+            }
+            else
+            {
+                Debug.Log($"    → Падаем БЫСТРЕЕ целевой скорости → УВЕЛИЧИВАЕМ тягу");
+            }
             if (verticalDistance > brakingStartHeight)
             {
                 Debug.Log($"  Режим: БЫСТРОЕ ПАДЕНИЕ (высота > {brakingStartHeight}м)");
@@ -844,6 +961,9 @@ public class LandingAutopilot : MonoBehaviour
         // Берем только X и Z компоненты (горизонтальные), игнорируем Y (вертикальную)
         Vector3 worldHorizontalVelocity3D = new Vector3(shipVelocity.x, 0f, shipVelocity.z);
         Vector3 localVelocity3D = shipTransform.InverseTransformDirection(worldHorizontalVelocity3D);
+        // КРИТИЧНО: Если корабль наклонен, локальная Y может иметь значение из-за проекции
+        // Принудительно обнуляем локальную Y компоненту (вертикальную в локальных координатах)
+        localVelocity3D.y = 0f;
         // localVelocity3D: (X=влево/вправо, Y=0, Z=вперед/назад)
         Vector2 currentVelocityLocal = new Vector2(
             localVelocity3D.x,  // влево/вправо (локальный X)
@@ -951,7 +1071,7 @@ public class LandingAutopilot : MonoBehaviour
     }
     
     /// <summary>
-    /// Выравнивание корабля по нормали поверхности (как самолет)
+    /// ВРЕМЕННО: Выравнивание корабля к вертикали (rotation = 0, 0, 0), игнорируя нормаль поверхности
     /// Использует управление двигателями для выравнивания, а не прямое изменение rotation
     /// </summary>
     private void AlignToSurfaceNormal(Vector3 surfaceNormal)
@@ -959,48 +1079,79 @@ public class LandingAutopilot : MonoBehaviour
         isAligningToSurface = true; // Устанавливаем флаг, что идет выравнивание
         
         Transform shipTransform = shipController.transform;
-        Vector3 desiredUp = surfaceNormal.normalized;
+        // ВРЕМЕННО: Выравниваемся к вертикали, игнорируя нормаль поверхности
+        Vector3 desiredUp = Vector3.up;
         Vector3 currentUp = shipTransform.up;
+        Vector3 currentForward = shipTransform.forward;
+        Vector3 currentRight = shipTransform.right;
         
-        // Вычисляем угол между текущей ориентацией и желаемой
-        float angleError = Vector3.Angle(currentUp, desiredUp);
+        // Вычисляем желаемое направление "вперед" корабля
+        // Проектируем текущий forward на плоскость поверхности, чтобы сохранить направление движения
+        Vector3 desiredForward = Vector3.ProjectOnPlane(currentForward, desiredUp).normalized;
         
-        if (angleError < maxOrientationAngle)
+        // Если проекция слишком мала (корабль почти перпендикулярен поверхности), используем направление к цели
+        if (desiredForward.magnitude < 0.1f && targetSite != null)
         {
-            isAligningToSurface = false; // Выравнивание завершено
-            return; // Уже достаточно выровнен
+            Vector3 toTarget = (targetSite.position - shipTransform.position).normalized;
+            desiredForward = Vector3.ProjectOnPlane(toTarget, desiredUp).normalized;
+            
+            // Если и это не помогло, используем текущий right, спроектированный на плоскость
+            if (desiredForward.magnitude < 0.1f)
+            {
+                desiredForward = Vector3.ProjectOnPlane(currentRight, desiredUp).normalized;
+            }
+            
+            // Если все еще не получилось, используем произвольное направление
+            if (desiredForward.magnitude < 0.1f)
+            {
+                // Выбираем направление, перпендикулярное нормали
+                if (Mathf.Abs(desiredUp.y) > 0.9f)
+                {
+                    // Нормаль почти вертикальна, используем Vector3.forward
+                    desiredForward = Vector3.ProjectOnPlane(Vector3.forward, desiredUp).normalized;
+                }
+                else
+                {
+                    // Используем Vector3.up, спроектированный на плоскость
+                    desiredForward = Vector3.ProjectOnPlane(Vector3.up, desiredUp).normalized;
+                }
+            }
         }
         
-        // Вычисляем ось вращения (в локальных координатах корабля)
-        Vector3 rotationAxis = Vector3.Cross(currentUp, desiredUp);
-        if (rotationAxis.magnitude < 0.001f)
-        {
-            return; // Уже выровнен или противоположно направлен
-        }
-        rotationAxis.Normalize();
+        // Вычисляем желаемое направление "вправо" корабля
+        Vector3 desiredRight = Vector3.Cross(desiredForward, desiredUp).normalized;
         
-        // Преобразуем ось вращения в локальные координаты корабля
-        Vector3 localRotationAxis = shipTransform.InverseTransformDirection(rotationAxis);
+        // Вычисляем желаемую ориентацию
+        Quaternion targetRotation = Quaternion.LookRotation(desiredForward, desiredUp);
+        
+        // Вычисляем текущую ориентацию
+        Quaternion currentRotation = shipTransform.rotation;
+        
+        // Вычисляем ошибку ориентации
+        Quaternion rotationError = Quaternion.Inverse(currentRotation) * targetRotation;
+        
+        // Преобразуем ошибку в углы Эйлера (в локальных координатах)
+        rotationError.ToAngleAxis(out float angle, out Vector3 axis);
+        if (angle > 180f) angle -= 360f; // Нормализуем угол до -180..180
         
         // Вычисляем угловую скорость для выравнивания
         Vector3 angularVelocity = shipController.GetAngularVelocity();
         Vector3 localAngularVelocity = shipTransform.InverseTransformDirection(angularVelocity);
         
         // Вычисляем желаемую угловую скорость для выравнивания
-        // Используем PID для плавного выравнивания
-        float targetAngularSpeed = angleError * orientationSmoothing * 0.01f; // Пропорционально углу ошибки
+        // Увеличиваем коэффициент для более агрессивного выравнивания при больших ошибках
+        float speedMultiplier = angle > 10f ? 0.05f : 0.03f; // Больше для больших ошибок
+        float targetAngularSpeed = angle * orientationSmoothing * speedMultiplier; // Пропорционально углу ошибки
         targetAngularSpeed = Mathf.Clamp(targetAngularSpeed, -orientationSmoothing, orientationSmoothing);
+        
+        // Преобразуем ось вращения в локальные координаты корабля
+        Vector3 localAxis = shipTransform.InverseTransformDirection(axis);
         
         // Вычисляем коррекцию для каждой оси (локальные координаты)
         // X - крен (roll), Y - рыскание (yaw), Z - тангаж (pitch)
-        float rollCorrection = 0f;   // Вращение вокруг локальной оси X (forward)
-        float yawCorrection = 0f;    // Вращение вокруг локальной оси Y (up)
-        float pitchCorrection = 0f;  // Вращение вокруг локальной оси Z (right)
-        
-        // Проектируем ось вращения на локальные оси
-        rollCorrection = -localRotationAxis.x * targetAngularSpeed;   // Крен
-        yawCorrection = -localRotationAxis.y * targetAngularSpeed;    // Рыскание
-        pitchCorrection = -localRotationAxis.z * targetAngularSpeed;  // Тангаж
+        float rollCorrection = -localAxis.x * targetAngularSpeed;   // Крен
+        float yawCorrection = -localAxis.y * targetAngularSpeed;    // Рыскание
+        float pitchCorrection = -localAxis.z * targetAngularSpeed;  // Тангаж
         
         // Используем PID для плавного выравнивания
         float rollPID = orientationPID.Update(0f, localAngularVelocity.x, Time.deltaTime);
@@ -1012,10 +1163,31 @@ public class LandingAutopilot : MonoBehaviour
         yawCorrection += yawPID;
         pitchCorrection += pitchPID;
         
-        // Ограничиваем коррекцию
-        rollCorrection = Mathf.Clamp(rollCorrection, -1f, 1f);
-        yawCorrection = Mathf.Clamp(yawCorrection, -1f, 1f);
-        pitchCorrection = Mathf.Clamp(pitchCorrection, -1f, 1f);
+        // Ограничиваем коррекцию, но если ошибка большая, увеличиваем силу
+        // Если угол ошибки большой (> 10°), увеличиваем максимальную коррекцию
+        float maxCorrection = angle > 10f ? 2f : 1f;
+        rollCorrection = Mathf.Clamp(rollCorrection, -maxCorrection, maxCorrection);
+        yawCorrection = Mathf.Clamp(yawCorrection, -maxCorrection, maxCorrection);
+        pitchCorrection = Mathf.Clamp(pitchCorrection, -maxCorrection, maxCorrection);
+        
+        // Проверяем, достаточно ли выровнен корабль
+        float angleError = Vector3.Angle(currentUp, desiredUp);
+        
+        // Логирование выравнивания (каждый 60 кадр)
+        if (showDebugInfo && Time.frameCount % 60 == 0)
+        {
+            Debug.Log($"LandingAutopilot: === ВЫРАВНИВАНИЕ === (ошибка угла: {angleError:F1}°, totalAngle: {angle:F1}°)");
+        }
+        
+        bool isAligned = angleError < maxOrientationAngle && angle < 5f && localAngularVelocity.magnitude < 0.1f;
+        
+        // Если корабль выровнен, уменьшаем силу коррекций (но продолжаем их применять для компенсации ветра/турбулентности)
+        float alignmentStrength = isAligned ? 0.3f : 1.0f; // Если выровнен, используем 30% силы коррекций
+        
+        if (isAligned)
+        {
+            isAligningToSurface = false; // Выравнивание завершено, но продолжаем контролировать rotation
+        }
         
         // Применяем коррекцию через управление двигателями
         // Для крена: разная тяга левых/правых двигателей
@@ -1023,6 +1195,11 @@ public class LandingAutopilot : MonoBehaviour
         // Для тангажа: поворот двигателей вперед/назад
         
         int engineCount = shipController.GetEngineCount();
+        float[] targetEngineThrusts = new float[4]; // Объявляем вне блока для использования в логировании
+        float rollStrength = 0f; // Для логирования
+        float pitchStrength = 0f; // Для логирования
+        float yawStrength = 0f; // Для логирования
+        
         if (engineCount >= 4)
         {
             // Предполагаем расположение: 0=левый передний, 1=правый передний, 2=левый задний, 3=правый задний
@@ -1032,7 +1209,6 @@ public class LandingAutopilot : MonoBehaviour
             
             // Если базовая тяга 0, не добавляем коррекцию (чтобы двигатели оставались на 0)
             // Коррекция нужна только для стабилизации, а не для создания подъемной силы
-            float[] targetEngineThrusts = new float[4];
             if (baseThrust <= 0.001f)
             {
                 // Базовая тяга 0 - устанавливаем все двигатели на 0
@@ -1044,36 +1220,120 @@ public class LandingAutopilot : MonoBehaviour
             else
             {
                 // Базовая тяга не 0 - добавляем коррекцию для стабилизации
-                targetEngineThrusts[0] = baseThrust + rollCorrection * 0.2f - pitchCorrection * 0.2f; // Левый передний: +roll, -pitch
-                targetEngineThrusts[1] = baseThrust - rollCorrection * 0.2f - pitchCorrection * 0.2f; // Правый передний: -roll, -pitch
-                targetEngineThrusts[2] = baseThrust + rollCorrection * 0.2f + pitchCorrection * 0.2f; // Левый задний: +roll, +pitch
-                targetEngineThrusts[3] = baseThrust - rollCorrection * 0.2f + pitchCorrection * 0.2f; // Правый задний: -roll, +pitch
+                // Учитываем alignmentStrength: если корабль уже выровнен, уменьшаем силу коррекций
+                // Увеличиваем коэффициент для более сильной коррекции при больших ошибках
+                float thrustCorrectionStrength = angleError > 10f ? 0.4f : 0.3f; // Больше для больших ошибок
+                
+                // ВСЕ коррекции rotation ТОЛЬКО через дифференциальную тягу двигателей:
+                // 1. Крен (roll): разная тяга левых/правых двигателей
+                //    - Крен влево (roll > 0): увеличиваем левые (E0, E2), уменьшаем правые (E1, E3)
+                //    - Крен вправо (roll < 0): увеличиваем правые (E1, E3), уменьшаем левые (E0, E2)
+                // 2. Тангаж (pitch): разная тяга передних/задних двигателей
+                //    - Нос вниз (pitch > 0): увеличиваем передние (E0, E1), уменьшаем задние (E2, E3)
+                //    - Нос вверх (pitch < 0): увеличиваем задние (E2, E3), уменьшаем передние (E0, E1)
+                // 3. Рыскание (yaw): диагональная дифференциальная тяга
+                //    - Поворот влево (yaw > 0): увеличиваем правые двигатели (E1, E3), уменьшаем левые (E0, E2)
+                //    - Поворот вправо (yaw < 0): увеличиваем левые двигатели (E0, E2), уменьшаем правые (E1, E3)
+                
+                rollStrength = rollCorrection * thrustCorrectionStrength * alignmentStrength;
+                pitchStrength = pitchCorrection * thrustCorrectionStrength * alignmentStrength;
+                yawStrength = yawCorrection * thrustCorrectionStrength * alignmentStrength;
+                
+                // Применяем ВСЕ три коррекции одновременно:
+                // E0 (левый передний): +roll (если крен влево), -pitch (если нос вниз), -yaw (если поворот влево)
+                // E1 (правый передний): -roll (если крен вправо), -pitch (если нос вниз), +yaw (если поворот влево)
+                // E2 (левый задний): +roll (если крен влево), +pitch (если нос вверх), -yaw (если поворот влево)
+                // E3 (правый задний): -roll (если крен вправо), +pitch (если нос вверх), +yaw (если поворот влево)
+                targetEngineThrusts[0] = baseThrust + rollStrength - pitchStrength - yawStrength; // Левый передний
+                targetEngineThrusts[1] = baseThrust - rollStrength - pitchStrength + yawStrength; // Правый передний
+                targetEngineThrusts[2] = baseThrust + rollStrength + pitchStrength - yawStrength; // Левый задний
+                targetEngineThrusts[3] = baseThrust - rollStrength + pitchStrength + yawStrength; // Правый задний
+            }
+            
+            // Дополнительная защита: проверяем, что ни один двигатель не стал отрицательным или слишком малым
+            // Используем адаптивный минимум в зависимости от ошибки ориентации для лучшей стабилизации
+            float minEngineThrustForAlignment = angleError > 5f ? 0.02f : 0.05f; // 2% для больших ошибок, 5% для малых
+            float minThrust = Mathf.Min(targetEngineThrusts[0], targetEngineThrusts[1], targetEngineThrusts[2], targetEngineThrusts[3]);
+            if (minThrust < minEngineThrustForAlignment)
+            {
+                // Уменьшаем все коррекции пропорционально, чтобы минимальная тяга стала >= minEngineThrustForAlignment
+                float reductionFactor = (baseThrust - minEngineThrustForAlignment) / (baseThrust - minThrust);
+                rollStrength *= reductionFactor;
+                pitchStrength *= reductionFactor;
+                yawStrength *= reductionFactor;
+                // Пересчитываем тягу двигателей с уменьшенными коррекциями
+                targetEngineThrusts[0] = baseThrust + rollStrength - pitchStrength - yawStrength;
+                targetEngineThrusts[1] = baseThrust - rollStrength - pitchStrength + yawStrength;
+                targetEngineThrusts[2] = baseThrust + rollStrength + pitchStrength - yawStrength;
+                targetEngineThrusts[3] = baseThrust - rollStrength + pitchStrength + yawStrength;
             }
             
             // Плавное изменение тяги каждого двигателя (не резко!)
-            float maxThrustChange = thrustChangeRate * Time.deltaTime;
+            // Для выравнивания используем более быструю скорость изменения для быстрой реакции
+            float alignmentThrustChangeRate = thrustChangeRate * 5.0f; // Увеличено для более быстрого выравнивания
+            float maxThrustChange = alignmentThrustChangeRate * Time.deltaTime;
+            
             for (int i = 0; i < 4; i++)
             {
                 targetEngineThrusts[i] = Mathf.Clamp01(targetEngineThrusts[i]);
+                // Обеспечиваем минимальную тягу для стабильности
+                targetEngineThrusts[i] = Mathf.Max(targetEngineThrusts[i], minEngineThrustForAlignment);
                 currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], targetEngineThrusts[i], maxThrustChange);
+                // Также применяем минимум к текущей тяге для плавности
+                currentEngineThrusts[i] = Mathf.Max(currentEngineThrusts[i], minEngineThrustForAlignment);
                 shipController.SetEngineThrust(i, currentEngineThrusts[i]);
             }
         }
         
-        // Рыскание и тангаж через поворот двигателей
-        Vector2 movementDirection = shipController.GetMovementDirection();
-        movementDirection.x += yawCorrection * 0.3f;   // Рыскание (поворот влево/вправо)
-        movementDirection.y += pitchCorrection * 0.3f; // Тангаж (наклон вперед/назад)
-        movementDirection.x = Mathf.Clamp(movementDirection.x, -1f, 1f);
-        movementDirection.y = Mathf.Clamp(movementDirection.y, -1f, 1f);
-        shipController.SetMovementDirection(movementDirection);
+        // ВАЖНО: ВСЕ коррекции rotation теперь выполняются ТОЛЬКО через дифференциальную тягу двигателей!
+        // НЕ изменяем movementDirection для коррекции rotation, чтобы не мешать горизонтальному движению к цели.
+        // movementDirection должен управляться только MoveTowardsTarget для движения к точке посадки.
         
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
-            Debug.Log($"AlignToSurfaceNormal: angleError={angleError:F1}°, roll={rollCorrection:F2}, yaw={yawCorrection:F2}, pitch={pitchCorrection:F2}");
+            Debug.Log($"LandingAutopilot: === ВЫРАВНИВАНИЕ ПО НОРМАЛИ ПОВЕРХНОСТИ ===");
+            Debug.Log($"  НОРМАЛЬ ПОВЕРХНОСТИ:");
+            Debug.Log($"    surfaceNormal: {surfaceNormal}");
+            Debug.Log($"    desiredUp: {desiredUp}");
+            Debug.Log($"  ТЕКУЩАЯ ОРИЕНТАЦИЯ КОРАБЛЯ:");
+            Debug.Log($"    currentUp: {currentUp}");
+            Debug.Log($"    currentForward: {currentForward}");
+            Debug.Log($"    currentRight: {currentRight}");
+            Debug.Log($"    Rotation (Euler): {shipTransform.rotation.eulerAngles}° (X={shipTransform.rotation.eulerAngles.x:F1}°, Y={shipTransform.rotation.eulerAngles.y:F1}°, Z={shipTransform.rotation.eulerAngles.z:F1}°)");
+            Debug.Log($"  ЖЕЛАЕМАЯ ОРИЕНТАЦИЯ:");
+            Debug.Log($"    desiredForward: {desiredForward}");
+            Debug.Log($"    desiredRight: {desiredRight}");
+            Debug.Log($"    targetRotation (Euler): {targetRotation.eulerAngles}° (X={targetRotation.eulerAngles.x:F1}°, Y={targetRotation.eulerAngles.y:F1}°, Z={targetRotation.eulerAngles.z:F1}°)");
+            Debug.Log($"  ОШИБКА ОРИЕНТАЦИИ:");
+            Debug.Log($"    angleError (по нормали): {angleError:F1}°");
+            Debug.Log($"    totalAngleError: {angle:F1}° (Axis: {axis})");
+            Debug.Log($"    rotationError (Euler): {rotationError.eulerAngles}° (X={rotationError.eulerAngles.x:F1}°, Y={rotationError.eulerAngles.y:F1}°, Z={rotationError.eulerAngles.z:F1}°)");
+            Debug.Log($"    localAxis: {localAxis} (X={localAxis.x:F3}, Y={localAxis.y:F3}, Z={localAxis.z:F3})");
+            Debug.Log($"  УГЛОВАЯ СКОРОСТЬ:");
+            Debug.Log($"    angularVelocity (world): {angularVelocity} (X={angularVelocity.x:F3}, Y={angularVelocity.y:F3}, Z={angularVelocity.z:F3})");
+            Debug.Log($"    localAngularVelocity: {localAngularVelocity} (X={localAngularVelocity.x:F3}, Y={localAngularVelocity.y:F3}, Z={localAngularVelocity.z:F3})");
+            Debug.Log($"    targetAngularSpeed: {targetAngularSpeed:F3}");
+            Debug.Log($"  КОРРЕКЦИЯ:");
+            Debug.Log($"    rollCorrection: {rollCorrection:F3} (крен, вокруг локальной оси X/forward)");
+            Debug.Log($"    yawCorrection: {yawCorrection:F3} (рыскание, вокруг локальной оси Y/up)");
+            Debug.Log($"    pitchCorrection: {pitchCorrection:F3} (тангаж, вокруг локальной оси Z/right)");
+            Debug.Log($"    rollPID: {rollPID:F3}, yawPID: {yawPID:F3}, pitchPID: {pitchPID:F3}");
+            Debug.Log($"  УПРАВЛЕНИЕ ДВИГАТЕЛЯМИ:");
+            Debug.Log($"    baseThrust: {currentThrust:F3}");
+            if (engineCount >= 4)
+            {
+                Debug.Log($"    Engine 0 (левый передний): {targetEngineThrusts[0]:F3} (roll:{rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{-yawStrength:F3})");
+                Debug.Log($"    Engine 1 (правый передний): {targetEngineThrusts[1]:F3} (roll:{-rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{yawStrength:F3})");
+                Debug.Log($"    Engine 2 (левый задний): {targetEngineThrusts[2]:F3} (roll:{rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{-yawStrength:F3})");
+                Debug.Log($"    Engine 3 (правый задний): {targetEngineThrusts[3]:F3} (roll:{-rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{yawStrength:F3})");
+            }
+            Debug.Log($"    ВСЕ коррекции rotation через дифференциальную тягу двигателей (НЕ через movementDirection)");
+            Debug.Log($"  СТАТУС:");
+            Debug.Log($"    isAligningToSurface: {isAligningToSurface}, angleError: {angleError:F1}°, totalAngle: {angle:F1}°, isAligned: {isAligned}, alignmentStrength: {alignmentStrength:F2}");
         }
         
-        isAligningToSurface = false; // Сбрасываем флаг в конце метода
+        // Флаг isAligningToSurface остается true, пока корабль не выровнен
+        // (сбрасывается только когда isAligned = true)
     }
     
     // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
@@ -1083,36 +1343,143 @@ public class LandingAutopilot : MonoBehaviour
     /// Использует дифференциальную тягу для компенсации крена/тангажа/рыскания
     /// НЕ работает когда идет выравнивание по нормали поверхности (AlignToSurfaceNormal имеет приоритет)
     /// </summary>
-    private void StabilizeRotation()
+    /// <summary>
+    /// Стабилизация rotation относительно нормали поверхности точки посадки
+    /// </summary>
+    /// <param name="surfaceNormal">Нормаль поверхности (если null, используется Vector3.up для вертикальной ориентации)</param>
+    private void StabilizeRotation(Vector3 surfaceNormal = default)
     {
+        // Если нормаль не задана, используем вертикаль
+        if (surfaceNormal == default || surfaceNormal.magnitude < 0.1f)
+        {
+            surfaceNormal = Vector3.up;
+        }
+        else
+        {
+            surfaceNormal = surfaceNormal.normalized;
+        }
+        
         // Если идет выравнивание по нормали поверхности, не стабилизируем rotation отдельно
         // (AlignToSurfaceNormal уже управляет двигателями)
         if (isAligningToSurface)
         {
             return;
         }
-        
+
         Vector3 angularVelocity = shipController.GetAngularVelocity();
         Transform shipTransform = shipController.transform;
         
         // Преобразуем угловую скорость в локальные координаты
         Vector3 localAngularVelocity = shipTransform.InverseTransformDirection(angularVelocity);
         
-        // Если угловая скорость очень мала, не стабилизируем (экономия ресурсов)
-        if (localAngularVelocity.magnitude < 0.01f)
+        // ВАЖНО: Компенсируем не только угловую скорость, но и саму ориентацию!
+        // Если корабль наклонен, но не вращается, он все равно должен выравниваться
+        
+        // ВРЕМЕННО: Выравниваемся к вертикали (rotation = 0, 0, 0), игнорируя нормаль поверхности
+        Vector3 desiredUp = Vector3.up; // Ориентация вертикально вверх
+        Vector3 currentUp = shipTransform.up;
+        float orientationError = Vector3.Angle(currentUp, desiredUp);
+        
+        // Вычисляем желаемую угловую скорость для выравнивания (пропорционально ошибке ориентации)
+        // Если корабль наклонен, нужно его выровнять
+        // Увеличены коэффициенты для более агрессивного и эффективного выравнивания к (0, 0, 0)
+        // Используем более высокий коэффициент для малых ошибок (0-5°), чтобы обеспечить точное выравнивание
+        float orientationCorrectionSpeed;
+        if (orientationError > 10f)
         {
-            return;
+            orientationCorrectionSpeed = orientationError * 0.25f; // Для больших ошибок
+        }
+        else if (orientationError > 5f)
+        {
+            orientationCorrectionSpeed = orientationError * 0.22f; // Для средних ошибок
+        }
+        else
+        {
+            // Для малых ошибок (0-5°) используем более высокий коэффициент для точного выравнивания
+            orientationCorrectionSpeed = orientationError * 0.20f; // Увеличено для лучшей стабилизации малых ошибок
+        }
+        
+        Vector3 desiredAngularVelocity = Vector3.Cross(currentUp, desiredUp).normalized * orientationCorrectionSpeed;
+        Vector3 localDesiredAngularVelocity = shipTransform.InverseTransformDirection(desiredAngularVelocity);
+        
+        // Комбинируем компенсацию угловой скорости И ориентации
+        // Целевая угловая скорость = компенсация текущей угловой скорости + выравнивание ориентации
+        Vector3 targetAngularVelocity = -localAngularVelocity + localDesiredAngularVelocity;
+        
+        // ВАЖНО: Усиливаем выравнивание для ВСЕХ ошибок ориентации, не только > 5°
+        // Для точного выравнивания к (0, 0, 0) нужна более агрессивная реакция
+        // Для очень малых ошибок используем меньшее усиление, чтобы избежать перерегулирования
+        float velocityMagnitude = localAngularVelocity.magnitude;
+        if (velocityMagnitude < 0.15f) // Если угловая скорость мала (увеличено с 0.1 для большей чувствительности)
+        {
+            if (orientationError > 10f)
+            {
+                targetAngularVelocity = localDesiredAngularVelocity * 2.2f; // Очень большие ошибки (> 10°) - усилено с 1.8
+            }
+            else if (orientationError > 7f)
+            {
+                targetAngularVelocity = localDesiredAngularVelocity * 2.3f; // Большие ошибки (7-10°) - усилено для быстрого выравнивания
+            }
+            else if (orientationError > 5f)
+            {
+                targetAngularVelocity = localDesiredAngularVelocity * 2.1f; // Средне-большие ошибки (5-7°) - усилено
+            }
+            else if (orientationError > 2f)
+            {
+                targetAngularVelocity = localDesiredAngularVelocity * 2.5f; // Средние ошибки (2-5°) - усилено с 2.0
+            }
+            else if (orientationError > 0.5f)
+            {
+                // Маленькие ошибки (0.5-2°) - умеренное усиление для плавного выравнивания
+                targetAngularVelocity = localDesiredAngularVelocity * 2.0f; // Уменьшено с 2.5 для плавности
+            }
+            else
+            {
+                // Очень маленькие ошибки (< 0.5°) - минимальное усиление для финального выравнивания без перерегулирования
+                targetAngularVelocity = localDesiredAngularVelocity * 1.5f; // Уменьшено с 3.0 для избежания перерегулирования
+            }
         }
         
         // Используем отдельные PID для каждой оси rotation
-        float rollCorrection = rollStabilizationPID.Update(0f, localAngularVelocity.x, Time.deltaTime);
-        float yawCorrection = yawStabilizationPID.Update(0f, localAngularVelocity.y, Time.deltaTime);
-        float pitchCorrection = pitchStabilizationPID.Update(0f, localAngularVelocity.z, Time.deltaTime);
+        // Цель: достичь targetAngularVelocity (компенсировать текущую скорость + выровнять ориентацию)
+        float rollCorrection = rollStabilizationPID.Update(targetAngularVelocity.x, localAngularVelocity.x, Time.deltaTime);
+        float yawCorrection = yawStabilizationPID.Update(targetAngularVelocity.y, localAngularVelocity.y, Time.deltaTime);
+        float pitchCorrection = pitchStabilizationPID.Update(targetAngularVelocity.z, localAngularVelocity.z, Time.deltaTime);
         
-        // Ограничиваем коррекцию
-        rollCorrection = Mathf.Clamp(rollCorrection * rotationStabilizationStrength, -0.3f, 0.3f);
-        yawCorrection = Mathf.Clamp(yawCorrection * rotationStabilizationStrength, -0.3f, 0.3f);
-        pitchCorrection = Mathf.Clamp(pitchCorrection * rotationStabilizationStrength, -0.3f, 0.3f);
+        // ВАЖНО: Получаем текущую базовую тягу ДО применения коррекций, чтобы ограничить их
+        float baseThrustForCorrection = currentThrust;
+        float minStabilizationThrustForCorrection = 0.15f;
+        float effectiveBaseThrustForCorrection = Mathf.Max(baseThrustForCorrection, minStabilizationThrustForCorrection);
+        
+        // Ограничиваем коррекцию относительно базовой тяги, чтобы не создавать отрицательную тягу
+        // ВАЖНО: При применении rollCorrection и pitchCorrection одновременно (E2 = base + roll + pitch),
+        // сумма коррекций не должна превышать baseThrust, иначе получим отрицательную тягу
+        // Для точного выравнивания к (0, 0, 0) используем адаптивные ограничения
+        // Увеличены ограничения для больших ошибок, чтобы обеспечить быстрое выравнивание
+        float correctionMultiplier = 1.0f;
+        float maxCorrectionRelative;
+        if (orientationError > 10f)
+        {
+            maxCorrectionRelative = 0.85f; // Большие ошибки (> 10°) - 85% для быстрого выравнивания
+            correctionMultiplier = 1.1f; // Дополнительное усиление для больших ошибок
+        }
+        else if (orientationError > 5f)
+        {
+            maxCorrectionRelative = 0.80f; // Средние ошибки (5-10°) - 80%
+            correctionMultiplier = 1.05f;
+        }
+        else
+        {
+            // Маленькие ошибки (0-5°) - используем большее ограничение для точного выравнивания
+            maxCorrectionRelative = 0.70f; // Увеличено с 60% для лучшего выравнивания
+            correctionMultiplier = 1.3f; // Больше усиление для малых ошибок
+        }
+        float maxCorrectionAbsolute = effectiveBaseThrustForCorrection * maxCorrectionRelative;
+        
+        // Ограничиваем коррекцию, но учитываем базовую тягу
+        rollCorrection = Mathf.Clamp(rollCorrection * rotationStabilizationStrength * correctionMultiplier, -maxCorrectionAbsolute, maxCorrectionAbsolute);
+        yawCorrection = Mathf.Clamp(yawCorrection * rotationStabilizationStrength * correctionMultiplier, -maxCorrectionAbsolute, maxCorrectionAbsolute);
+        pitchCorrection = Mathf.Clamp(pitchCorrection * rotationStabilizationStrength * correctionMultiplier, -maxCorrectionAbsolute, maxCorrectionAbsolute);
         
         int engineCount = shipController.GetEngineCount();
         if (engineCount >= 4)
@@ -1124,34 +1491,152 @@ public class LandingAutopilot : MonoBehaviour
             
             float baseThrust = currentThrust; // Используем текущую тягу как базовую
             
+            // ВАЖНО: Даже при низкой базовой тяге используем минимальную тягу для стабилизации rotation
+            // Это позволяет компенсировать rotation даже во время падения
+            float minStabilizationThrust = 0.15f; // Минимальная тяга (15%) для стабилизации rotation
+            float effectiveBaseThrust = Mathf.Max(baseThrust, minStabilizationThrust);
+            
             // Вычисляем целевую тягу для каждого двигателя
-            // Если базовая тяга 0, не добавляем коррекцию (чтобы двигатели оставались на 0)
-            // Коррекция нужна только для стабилизации, а не для создания подъемной силы
+            // Всегда используем эффективную базовую тягу + коррекцию для стабилизации
             float[] targetEngineThrusts = new float[4];
-            if (baseThrust <= 0.001f)
+            
+            // Добавляем коррекцию для стабилизации rotation
+            // Используем effectiveBaseThrust, который включает минимальную тягу для стабилизации
+            // ВАЖНО: Коррекции уже ограничены относительно базовой тяги в коде выше (maxCorrectionAbsolute)
+            // ВСЕ коррекции rotation ТОЛЬКО через дифференциальную тягу двигателей:
+            // 1. Крен (roll): разная тяга левых/правых двигателей
+            // 2. Тангаж (pitch): разная тяга передних/задних двигателей
+            // 3. Рыскание (yaw): диагональная дифференциальная тяга (поворот влево/вправо)
+            targetEngineThrusts[0] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection; // Левый передний: +roll, -pitch, -yaw
+            targetEngineThrusts[1] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection; // Правый передний: -roll, -pitch, +yaw
+            targetEngineThrusts[2] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection; // Левый задний: +roll, +pitch, -yaw
+            targetEngineThrusts[3] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection; // Правый задний: -roll, +pitch, +yaw
+            
+            // Дополнительная защита: проверяем, что ни один двигатель не стал отрицательным или слишком малым
+            // Используем адаптивный минимум в зависимости от ошибки ориентации для лучшей стабилизации
+            // Для очень больших ошибок (> 7°) используем меньший минимум (1%) для максимальной коррекции
+            // Для средних ошибок (5-7°) используем 2% для баланса
+            // Для малых ошибок (< 5°) используем 5% для стабильности
+            float minEngineThrustForProtection;
+            if (orientationError > 7f)
             {
-                // Базовая тяга 0 - устанавливаем все двигатели на 0
-                for (int i = 0; i < 4; i++)
-                {
-                    targetEngineThrusts[i] = 0f;
-                }
+                minEngineThrustForProtection = 0.01f; // 1% для очень больших ошибок - максимальный диапазон коррекции
+            }
+            else if (orientationError > 5f)
+            {
+                minEngineThrustForProtection = 0.02f; // 2% для средних ошибок
             }
             else
             {
-                // Базовая тяга не 0 - добавляем коррекцию для стабилизации rotation
-                targetEngineThrusts[0] = baseThrust + rollCorrection - pitchCorrection; // Левый передний: +roll, -pitch
-                targetEngineThrusts[1] = baseThrust - rollCorrection - pitchCorrection; // Правый передний: -roll, -pitch
-                targetEngineThrusts[2] = baseThrust + rollCorrection + pitchCorrection; // Левый задний: +roll, +pitch
-                targetEngineThrusts[3] = baseThrust - rollCorrection + pitchCorrection; // Правый задний: -roll, +pitch
+                minEngineThrustForProtection = 0.05f; // 5% для малых ошибок - стабильность важнее
+            }
+            float minThrust = Mathf.Min(targetEngineThrusts[0], targetEngineThrusts[1], targetEngineThrusts[2], targetEngineThrusts[3]);
+            if (minThrust < minEngineThrustForProtection)
+            {
+                // Уменьшаем все коррекции пропорционально, чтобы минимальная тяга стала >= minEngineThrustForProtection
+                float reductionFactor = (effectiveBaseThrust - minEngineThrustForProtection) / (effectiveBaseThrust - minThrust);
+                rollCorrection *= reductionFactor;
+                pitchCorrection *= reductionFactor;
+                yawCorrection *= reductionFactor;
+                // Пересчитываем тягу двигателей с уменьшенными коррекциями
+                targetEngineThrusts[0] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection;
+                targetEngineThrusts[1] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection;
+                targetEngineThrusts[2] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection;
+                targetEngineThrusts[3] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection;
             }
             
             // Плавное изменение тяги каждого двигателя (не резко!)
-            float maxThrustChange = thrustChangeRate * Time.deltaTime;
+            // Для стабилизации rotation используем более быструю скорость изменения, чтобы быстрее реагировать на ошибки
+            // Значительно увеличена скорость изменения тяги для быстрого выравнивания к (0, 0, 0)
+            float stabilizationThrustChangeRate = thrustChangeRate * 5.0f; // Увеличено с 2.5 до 5.0 для более быстрой реакции
+            float maxThrustChange = stabilizationThrustChangeRate * Time.deltaTime;
+            
+            // ВАЖНО: Обеспечиваем минимальную тягу для каждого двигателя для стабильности
+            // Используем ту же переменную minEngineThrustForProtection, что и выше, для согласованности
+            
             for (int i = 0; i < engineCount && i < 4; i++)
             {
                 targetEngineThrusts[i] = Mathf.Clamp01(targetEngineThrusts[i]);
+                // Обеспечиваем минимальную тягу для стабильности (используем ту же переменную, что и выше)
+                targetEngineThrusts[i] = Mathf.Max(targetEngineThrusts[i], minEngineThrustForProtection);
                 currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], targetEngineThrusts[i], maxThrustChange);
+                // Также применяем минимум к текущей тяге для плавности
+                currentEngineThrusts[i] = Mathf.Max(currentEngineThrusts[i], minEngineThrustForProtection);
                 shipController.SetEngineThrust(i, currentEngineThrusts[i]);
+            }
+            
+            // ВАЖНО: Все коррекции rotation (включая yaw) теперь выполняются ТОЛЬКО через дифференциальную тягу двигателей!
+            // Рыскание (yaw) уже учтено в дифференциальной тяге выше (E0, E2 меньше, E1, E3 больше для поворота влево).
+            // НЕ изменяем movementDirection для коррекции rotation, чтобы не мешать горизонтальному движению.
+            
+            // Логирование для отладки
+            if (showDebugInfo && Time.frameCount % 60 == 0)
+            {
+                // Диагностика: проверяем фактическое расположение двигателей
+                // shipTransform уже объявлен выше в методе
+                Vector3 shipForward = shipTransform.forward;
+                Vector3 shipRight = shipTransform.right;
+                Vector3 shipUp = shipTransform.up;
+                
+                Debug.Log($"LandingAutopilot: === СТАБИЛИЗАЦИЯ ROTATION ===");
+                Debug.Log($"  ЛОКАЛЬНЫЕ ОСИ КОРАБЛЯ:");
+                Debug.Log($"    ship.forward (локальная X): {shipForward} (вперед)");
+                Debug.Log($"    ship.up (локальная Y): {shipUp} (вверх)");
+                Debug.Log($"    ship.right (локальная Z): {shipRight} (вправо)");
+                Debug.Log($"    Rotation (Euler): {shipTransform.rotation.eulerAngles}° (X={shipTransform.rotation.eulerAngles.x:F1}°, Y={shipTransform.rotation.eulerAngles.y:F1}°, Z={shipTransform.rotation.eulerAngles.z:F1}°)");
+                Debug.Log($"  ОСИ ROTATION:");
+                Debug.Log($"    Roll (крен, вокруг forward/X): localAngularVelocity.x = {localAngularVelocity.x:F3}");
+                Debug.Log($"    Yaw (рыскание, вокруг up/Y): localAngularVelocity.y = {localAngularVelocity.y:F3}");
+                Debug.Log($"    Pitch (тангаж, вокруг right/Z): localAngularVelocity.z = {localAngularVelocity.z:F3}");
+                Debug.Log($"  Ориентация (ВРЕМЕННО: выравнивание к вертикали Vector3.up):");
+                Debug.Log($"    desiredUp (Vector3.up): {desiredUp}");
+                Debug.Log($"    currentUp: {currentUp}");
+                Debug.Log($"    orientationError (относительно вертикали): {orientationError:F1}°");
+                
+                // ДИАГНОСТИКА: Проверяем направление вращения
+                Vector3 crossAxis = Vector3.Cross(currentUp, desiredUp);
+                Vector3 crossAxisNormalized = crossAxis.normalized;
+                Debug.Log($"  ДИАГНОСТИКА ВРАЩЕНИЯ:");
+                Debug.Log($"    Vector3.Cross(currentUp, desiredUp): {crossAxis} (magnitude: {crossAxis.magnitude:F3})");
+                Debug.Log($"    Нормализованная ось: {crossAxisNormalized}");
+                Debug.Log($"    В мировых координатах:");
+                Debug.Log($"      crossAxis.x = {crossAxisNormalized.x:F3} (влево/вправо в мире)");
+                Debug.Log($"      crossAxis.y = {crossAxisNormalized.y:F3} (вверх/вниз в мире)");
+                Debug.Log($"      crossAxis.z = {crossAxisNormalized.z:F3} (вперед/назад в мире)");
+                Debug.Log($"    В локальных координатах корабля:");
+                Debug.Log($"      localDesiredAngularVelocity.x = {localDesiredAngularVelocity.x:F3} (крен, вокруг forward/X)");
+                Debug.Log($"      localDesiredAngularVelocity.y = {localDesiredAngularVelocity.y:F3} (рыскание, вокруг up/Y)");
+                Debug.Log($"      localDesiredAngularVelocity.z = {localDesiredAngularVelocity.z:F3} (тангаж, вокруг right/Z)");
+                Debug.Log($"    ИНТЕРПРЕТАЦИЯ:");
+                if (localDesiredAngularVelocity.x > 0.01f)
+                    Debug.Log($"      X > 0: Крен ВЛЕВО (левая сторона вниз) → нужно увеличить E0, E2 (левые)");
+                else if (localDesiredAngularVelocity.x < -0.01f)
+                    Debug.Log($"      X < 0: Крен ВПРАВО (правая сторона вниз) → нужно увеличить E1, E3 (правые)");
+                if (localDesiredAngularVelocity.y > 0.01f)
+                    Debug.Log($"      Y > 0: Поворот ВЛЕВО (нос поворачивается влево) → нужно увеличить E1, E3 (правые)");
+                else if (localDesiredAngularVelocity.y < -0.01f)
+                    Debug.Log($"      Y < 0: Поворот ВПРАВО (нос поворачивается вправо) → нужно увеличить E0, E2 (левые)");
+                if (localDesiredAngularVelocity.z > 0.01f)
+                    Debug.Log($"      Z > 0: Нос ВВЕРХ (задняя часть вниз) → нужно увеличить E2, E3 (задние)");
+                else if (localDesiredAngularVelocity.z < -0.01f)
+                    Debug.Log($"      Z < 0: Нос ВНИЗ (передняя часть вниз) → нужно увеличить E0, E1 (передние)");
+                Debug.Log($"  Угловая скорость:");
+                Debug.Log($"    localAngularVelocity: ({localAngularVelocity.x:F3}, {localAngularVelocity.y:F3}, {localAngularVelocity.z:F3}) рад/с (magnitude: {localAngularVelocity.magnitude:F3})");
+                Debug.Log($"    localDesiredAngularVelocity: ({localDesiredAngularVelocity.x:F3}, {localDesiredAngularVelocity.y:F3}, {localDesiredAngularVelocity.z:F3}) рад/с (magnitude: {localDesiredAngularVelocity.magnitude:F3})");
+                Debug.Log($"    targetAngularVelocity: ({targetAngularVelocity.x:F3}, {targetAngularVelocity.y:F3}, {targetAngularVelocity.z:F3}) рад/с (magnitude: {targetAngularVelocity.magnitude:F3})");
+                Debug.Log($"  Коррекции:");
+                Debug.Log($"    rollCorrection: {rollCorrection:F3}, yawCorrection: {yawCorrection:F3}, pitchCorrection: {pitchCorrection:F3}");
+                Debug.Log($"    correctionMultiplier: {correctionMultiplier:F2}, maxCorrectionAbsolute: {maxCorrectionAbsolute:F3} (70% от baseThrust={effectiveBaseThrustForCorrection:F3})");
+                Debug.Log($"    baseThrust: {baseThrust:F3}, effectiveBaseThrust: {effectiveBaseThrust:F3}");
+                Debug.Log($"  Тяга двигателей:");
+                Debug.Log($"    E0 (левый передний): {targetEngineThrusts[0]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} - pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
+                Debug.Log($"    E1 (правый передний): {targetEngineThrusts[1]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} - pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
+                Debug.Log($"    E2 (левый задний): {targetEngineThrusts[2]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} + pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
+                Debug.Log($"    E3 (правый задний): {targetEngineThrusts[3]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} + pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
+                Debug.Log($"  ЛОГИКА КОРРЕКЦИЙ:");
+                Debug.Log($"    Roll: {rollCorrection:F3} (rollCorrection > 0 = крен влево → увеличиваем E0, E2; rollCorrection < 0 = крен вправо → увеличиваем E1, E3)");
+                Debug.Log($"    Pitch: {pitchCorrection:F3} (pitchCorrection > 0 = нос вниз → увеличиваем E0, E1; pitchCorrection < 0 = нос вверх → увеличиваем E2, E3)");
+                Debug.Log($"    Yaw: {yawCorrection:F3} (yawCorrection > 0 = поворот влево → увеличиваем E1, E3; yawCorrection < 0 = поворот вправо → увеличиваем E0, E2)");
             }
         }
         else
@@ -1165,11 +1650,15 @@ public class LandingAutopilot : MonoBehaviour
             }
         }
         
-        // Рыскание через поворот двигателей
-        Vector2 movementDirection = shipController.GetMovementDirection();
-        movementDirection.x += yawCorrection; // Рыскание (поворот влево/вправо)
-        movementDirection.x = Mathf.Clamp(movementDirection.x, -1f, 1f);
-        shipController.SetMovementDirection(movementDirection);
+        // Рыскание через поворот двигателей (только если не идет выравнивание по нормали)
+        // (Если двигателей >= 4, yaw уже управляется выше внутри блока)
+        if (!isAligningToSurface && engineCount < 4)
+        {
+            Vector2 movementDirection = shipController.GetMovementDirection();
+            movementDirection.x += yawCorrection * 0.5f; // Рыскание (поворот влево/вправо)
+            movementDirection.x = Mathf.Clamp(movementDirection.x, -1f, 1f);
+            shipController.SetMovementDirection(movementDirection);
+        }
         
         if (showDebugInfo && Time.frameCount % 60 == 0 && (Mathf.Abs(rollCorrection) > 0.01f || Mathf.Abs(yawCorrection) > 0.01f || Mathf.Abs(pitchCorrection) > 0.01f))
         {
