@@ -871,7 +871,10 @@ public class ShipController : MonoBehaviour
 
 
 
-        float targetAngleX = -desiredMovementDirection.y * maxTiltAngle;
+        // ВАЖНО: Двигатели изначально направлены ВНИЗ (для создания тяги вверх)
+        // Когда desiredMovementDirection.y < 0 (назад), нужно наклонять двигатель НАЗАД (отрицательный угол)
+        // Поэтому убираем минус перед desiredMovementDirection.y
+        float targetAngleX = desiredMovementDirection.y * maxTiltAngle;
 
 
 
@@ -891,15 +894,20 @@ public class ShipController : MonoBehaviour
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
             Debug.Log($"ShipController: === ПОВОРОТ ДВИГАТЕЛЕЙ ===");
-            Debug.Log($"  Входные данные (SetMovementDirection):");
-            Debug.Log($"    desiredMovementDirection.x={desiredMovementDirection.x:F3} (влево/вправо)");
-            Debug.Log($"    desiredMovementDirection.y={desiredMovementDirection.y:F3} (вперед/назад)");
+            Debug.Log($"  ВАЖНО: В Unity координаты: X (влево/вправо), Y (вверх/вниз), Z (вперед/назад)");
+            Debug.Log($"  Входные данные (SetMovementDirection, Vector2):");
+            Debug.Log($"    desiredMovementDirection.x={desiredMovementDirection.x:F3} (влево/вправо, локальный X корабля)");
+            Debug.Log($"    desiredMovementDirection.y={desiredMovementDirection.y:F3} (вперед/назад, локальный Z корабля, НЕ Unity Y!)");
             Debug.Log($"  Вычисленные углы поворота:");
-            Debug.Log($"    targetAngleX={targetAngleX:F1}° (наклон вперед/назад, вокруг оси X/shipRight)");
-            Debug.Log($"    targetAngleY={targetAngleY:F1}° (поворот влево/вправо, вокруг оси Y/transform.up)");
-            Debug.Log($"  Интерпретация:");
-            Debug.Log($"    Если desiredMovementDirection.x > 0 (вправо) → targetAngleY < 0 (поворот влево)");
-            Debug.Log($"    Если desiredMovementDirection.y > 0 (вперед) → targetAngleX < 0 (наклон назад)");
+            Debug.Log($"    targetAngleX={targetAngleX:F1}° = desiredMovementDirection.y * maxTiltAngle (наклон вперед/назад, вокруг оси X/shipRight)");
+            Debug.Log($"    targetAngleY={targetAngleY:F1}° = -desiredMovementDirection.x * maxTiltAngle (поворот влево/вправо, вокруг оси Y/transform.up)");
+            Debug.Log($"  ПРОВЕРКА (двигатели направлены ВНИЗ):");
+            Debug.Log($"    Если desiredMovementDirection.y > 0 (вперед, локальный Z) → targetAngleX > 0 (наклон вперед) → двигатель наклоняется вперед → forward направлен вперед → engineDirection назад → сила вперед ✓");
+            Debug.Log($"    Если desiredMovementDirection.y < 0 (назад, локальный Z) → targetAngleX < 0 (наклон назад) → двигатель наклоняется назад → forward направлен назад → engineDirection вперед → сила назад ✓");
+            Debug.Log($"    Если desiredMovementDirection.x > 0 (вправо, локальный X) → targetAngleY < 0 (поворот влево) → двигатель поворачивается влево → forward направлен влево → engineDirection вправо → сила вправо ✓");
+            Debug.Log($"  Фактически:");
+            Debug.Log($"    desiredMovementDirection.y={desiredMovementDirection.y:F3} → targetAngleX={targetAngleX:F1}°");
+            Debug.Log($"    desiredMovementDirection.x={desiredMovementDirection.x:F3} → targetAngleY={targetAngleY:F1}°");
         }
     }
 
