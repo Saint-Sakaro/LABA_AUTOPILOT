@@ -58,10 +58,27 @@ public class ShipUI : MonoBehaviour
     [SerializeField] private Color radarGoodColor = Color.green;
     [SerializeField] private Color radarWarningColor = Color.yellow;
     
+    [Header("Landing Autopilot")]
+    [SerializeField] private bool showAutopilotDisplay = true;
+    [SerializeField] private LandingAutopilot landingAutopilot;
+    [SerializeField] private UnityEngine.UI.Button autopilotButton;
+    [SerializeField] private TextMeshProUGUI autopilotStatusText;
+    [SerializeField] private TextMeshProUGUI autopilotPhaseText;
+    [SerializeField] private string autopilotStatusFormat = "Автопилот: {0}";
+    [SerializeField] private string autopilotPhaseFormat = "Фаза: {0}";
+    [SerializeField] private string autopilotStartText = "Начать посадку";
+    [SerializeField] private string autopilotStopText = "Отменить посадку";
+    [SerializeField] private Color autopilotActiveColor = Color.green;
+    [SerializeField] private Color autopilotInactiveColor = Color.white;
+    
     [Header("Update Settings")]
     [SerializeField] private float updateInterval = 0.1f;
 
     private float updateTimer = 0f;
+    
+    // Защита от двойного нажатия кнопки автопилота
+    private float lastAutopilotButtonClickTime = 0f;
+    private const float AUTOPILOT_BUTTON_COOLDOWN = 0.5f; // Минимальный интервал между нажатиями (секунды)
 
     private void Start()
     {
@@ -103,6 +120,29 @@ public class ShipUI : MonoBehaviour
         {
             // Подписываемся на обновления радара
             landingRadar.OnSitesUpdated += OnRadarSitesUpdated;
+        }
+        
+        // Находим LandingAutopilot
+        if (landingAutopilot == null && showAutopilotDisplay)
+        {
+            landingAutopilot = FindObjectOfType<LandingAutopilot>();
+        }
+        
+        if (landingAutopilot == null && showAutopilotDisplay)
+        {
+            Debug.LogWarning("ShipUI: LandingAutopilot не найден! UI автопилота не будет отображаться.");
+        }
+        else if (landingAutopilot != null && showAutopilotDisplay)
+        {
+            // Подписываемся на события автопилота
+            landingAutopilot.OnAutopilotStateChanged += OnAutopilotStateChanged;
+            landingAutopilot.OnLandingPhaseChanged += OnLandingPhaseChanged;
+            
+            // Настраиваем кнопку
+            if (autopilotButton != null)
+            {
+                autopilotButton.onClick.AddListener(OnAutopilotButtonClicked);
+            }
         }
 
 
@@ -282,6 +322,11 @@ public class ShipUI : MonoBehaviour
         if (showRadarDisplay)
         {
             UpdateRadarDisplay();
+        }
+        
+        if (showAutopilotDisplay)
+        {
+            UpdateAutopilotDisplay();
         }
     }
 
@@ -532,9 +577,152 @@ public class ShipUI : MonoBehaviour
             landingRadar.OnSitesUpdated -= OnRadarSitesUpdated;
         }
         
-        // Отписываемся от событий FuelManager (если была подписка)
-        // Примечание: В текущей реализации используется периодическое обновление через UpdateFuelDisplay()
-        // вместо подписки на события, поэтому отписка не требуется
+        // Отписываемся от событий
+        if (landingRadar != null)
+        {
+            landingRadar.OnSitesUpdated -= OnRadarSitesUpdated;
+        }
+        
+        if (landingAutopilot != null)
+        {
+            landingAutopilot.OnAutopilotStateChanged -= OnAutopilotStateChanged;
+            landingAutopilot.OnLandingPhaseChanged -= OnLandingPhaseChanged;
+        }
+    }
+    
+    // ========== АВТОПИЛОТ UI ==========
+    
+    /// <summary>
+    /// Обновляет отображение автопилота
+    /// </summary>
+    private void UpdateAutopilotDisplay()
+    {
+        if (landingAutopilot == null)
+        {
+            // Если автопилот не найден, скрываем UI
+            if (autopilotStatusText != null) autopilotStatusText.text = "Автопилот не найден";
+            if (autopilotPhaseText != null) autopilotPhaseText.text = "—";
+            return;
+        }
+        
+        bool isActive = landingAutopilot.IsActive();
+        
+        // Обновляем текст статуса
+        if (autopilotStatusText != null)
+        {
+            string status = isActive ? "АКТИВЕН" : "НЕАКТИВЕН";
+            autopilotStatusText.text = string.Format(autopilotStatusFormat, status);
+            autopilotStatusText.color = isActive ? autopilotActiveColor : autopilotInactiveColor;
+        }
+        
+        // Обновляем текст фазы
+        if (autopilotPhaseText != null)
+        {
+            if (isActive)
+            {
+                LandingAutopilot.LandingPhase phase = landingAutopilot.GetCurrentPhase();
+                string phaseName = GetPhaseName(phase);
+                autopilotPhaseText.text = string.Format(autopilotPhaseFormat, phaseName);
+            }
+            else
+            {
+                autopilotPhaseText.text = string.Format(autopilotPhaseFormat, "—");
+            }
+        }
+        
+        // Обновляем кнопку
+        if (autopilotButton != null)
+        {
+            var buttonText = autopilotButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (buttonText != null)
+            {
+                string newText = isActive ? autopilotStopText : autopilotStartText;
+                buttonText.text = newText;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Получает название фазы посадки
+    /// </summary>
+    private string GetPhaseName(LandingAutopilot.LandingPhase phase)
+    {
+        switch (phase)
+        {
+            case LandingAutopilot.LandingPhase.None:
+                return "Ожидание";
+            case LandingAutopilot.LandingPhase.WaitingForSite:
+                return "Ожидание точек";
+            case LandingAutopilot.LandingPhase.Approaching:
+                return "Приближение";
+            case LandingAutopilot.LandingPhase.Braking:
+                return "Торможение";
+            case LandingAutopilot.LandingPhase.Landing:
+                return "Посадка";
+            default:
+                return "Неизвестно";
+        }
+    }
+    
+    /// <summary>
+    /// Обработчик нажатия кнопки автопилота
+    /// Публичный метод для использования в Unity Inspector
+    /// </summary>
+    public void OnAutopilotButtonClicked()
+    {
+        // Защита от двойного нажатия
+        float currentTime = Time.time;
+        if (currentTime - lastAutopilotButtonClickTime < AUTOPILOT_BUTTON_COOLDOWN)
+        {
+            Debug.LogWarning($"ShipUI: Кнопка автопилота нажата слишком быстро! Игнорирую нажатие. (прошло {currentTime - lastAutopilotButtonClickTime:F3}с, требуется {AUTOPILOT_BUTTON_COOLDOWN}с)");
+            return;
+        }
+        lastAutopilotButtonClickTime = currentTime;
+        
+        if (landingAutopilot == null)
+        {
+            Debug.LogError("ShipUI: LandingAutopilot не найден! Назначьте его в Inspector.");
+            return;
+        }
+        
+        bool wasActive = landingAutopilot.IsActive();
+        Debug.Log($"ShipUI: Кнопка нажата. Текущий статус автопилота: {(wasActive ? "АКТИВЕН" : "НЕАКТИВЕН")}");
+        
+        if (wasActive)
+        {
+            // Останавливаем автопилот
+            Debug.Log("ShipUI: Остановка автопилота...");
+            landingAutopilot.StopLanding();
+        }
+        else
+        {
+            // Запускаем автопилот
+            Debug.Log("ShipUI: Запуск автопилота...");
+            landingAutopilot.StartLanding();
+            
+            // Проверяем статус после запуска
+            bool isNowActive = landingAutopilot.IsActive();
+            Debug.Log($"ShipUI: После запуска статус автопилота: {(isNowActive ? "АКТИВЕН" : "НЕАКТИВЕН")}");
+        }
+        
+        // Немедленно обновляем UI
+        UpdateAutopilotDisplay();
+    }
+    
+    /// <summary>
+    /// Обработчик изменения состояния автопилота
+    /// </summary>
+    private void OnAutopilotStateChanged(bool isActive)
+    {
+        UpdateAutopilotDisplay();
+    }
+    
+    /// <summary>
+    /// Обработчик изменения фазы посадки
+    /// </summary>
+    private void OnLandingPhaseChanged(LandingAutopilot.LandingPhase phase)
+    {
+        UpdateAutopilotDisplay();
     }
 }
 

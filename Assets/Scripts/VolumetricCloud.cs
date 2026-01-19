@@ -38,20 +38,20 @@ public class VolumetricCloud : MonoBehaviour
         
         if (cloudParticles != null)
         {
-            if (cloudMaterial == null)
-                cloudMaterial = cloudParticles.GetComponent<ParticleSystemRenderer>().material;
+        if (cloudMaterial == null)
+            cloudMaterial = cloudParticles.GetComponent<ParticleSystemRenderer>().material;
 
             if (cloudMaterial != null && cloudMaterial.mainTexture == null)
-            {
-                Texture2D cloudTexture = CloudTextureGenerator.GenerateCloudTexture(
-                    256, 
-                    50f, 
-                    Random.Range(0, 10000)
-                );
-                cloudMaterial.mainTexture = cloudTexture;
-            }
-            
-            DisableVelocityOverLifetime();
+        {
+            Texture2D cloudTexture = CloudTextureGenerator.GenerateCloudTexture(
+                256, 
+                50f, 
+                Random.Range(0, 10000)
+            );
+            cloudMaterial.mainTexture = cloudTexture;
+        }
+        
+        DisableVelocityOverLifetime();
         }
         
         baseAlpha = alpha;
@@ -72,15 +72,15 @@ public class VolumetricCloud : MonoBehaviour
         }
         
         if (!isDissolving)
-        {
-            UpdatePulsation();
+    {
+        UpdatePulsation();
         }
         
         transform.position += windDirection.normalized * windSpeed * Time.deltaTime;
         
         if (cloudMaterial != null)
         {
-            cloudMaterial.SetFloat("_Density", density);
+        cloudMaterial.SetFloat("_Density", density);
         }
     }
     
@@ -173,9 +173,9 @@ public class VolumetricCloud : MonoBehaviour
         alpha = Mathf.Clamp01(newAlpha);
         if (cloudMaterial != null)
         {
-            Color color = cloudMaterial.color;
-            color.a = alpha;
-            cloudMaterial.color = color;
+        Color color = cloudMaterial.color;
+        color.a = alpha;
+        cloudMaterial.color = color;
         }
     }
     
@@ -185,7 +185,7 @@ public class VolumetricCloud : MonoBehaviour
         density = Mathf.Clamp(newDensity, 0.1f, 2f);
         if (cloudMaterial != null)
         {
-            cloudMaterial.SetFloat("_Density", density);
+        cloudMaterial.SetFloat("_Density", density);
         }
     }
     

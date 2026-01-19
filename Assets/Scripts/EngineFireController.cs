@@ -57,7 +57,7 @@ public class EngineFireController : MonoBehaviour
     {
         return currentThrust;
     }
-        
+    
     private void UpdateFireIntensity()
     {
         if (fireParticles == null) return;

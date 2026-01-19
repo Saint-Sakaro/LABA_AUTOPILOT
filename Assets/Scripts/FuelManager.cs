@@ -300,4 +300,39 @@ public class FuelManager : MonoBehaviour
     {
         return new List<LiquidTank>(fuelTanks);
     }
+    
+    /// <summary>
+    /// Получает базовый расход топлива (л/сек при 100% тяги)
+    /// </summary>
+    public float GetBaseConsumptionRate()
+    {
+        return baseConsumptionRate;
+    }
+    
+    /// <summary>
+    /// Получает минимальный расход топлива (л/сек при 0% тяги)
+    /// </summary>
+    public float GetMinConsumptionRate()
+    {
+        return minConsumptionRate;
+    }
+    
+    /// <summary>
+    /// Получает множитель расхода топлива
+    /// </summary>
+    public float GetConsumptionMultiplier()
+    {
+        return consumptionMultiplier;
+    }
+    
+    /// <summary>
+    /// Рассчитывает скорость расхода топлива для заданной тяги (0-1)
+    /// Публичный метод для использования другими скриптами
+    /// </summary>
+    public float GetConsumptionRateForThrust(float thrust)
+    {
+        float clampedThrust = Mathf.Clamp01(thrust);
+        float consumptionRate = Mathf.Lerp(minConsumptionRate, baseConsumptionRate, clampedThrust);
+        return consumptionRate * consumptionMultiplier;
+    }
 }

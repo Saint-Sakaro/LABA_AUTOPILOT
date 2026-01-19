@@ -340,15 +340,12 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
         Vector2 center = sphereContainer.rect.center;
         Vector2 offset = localPoint - center;
         
-        // Для квадратного компаса: ограничиваем X и Z независимо до [-sphereRadius, sphereRadius]
         float clampedX = Mathf.Clamp(offset.x, -sphereRadius, sphereRadius);
         float clampedZ = Mathf.Clamp(offset.y, -sphereRadius, sphereRadius);
         
-        // Нормализуем в диапазон [-1, 1] для X и Z
         float normalizedX = clampedX / sphereRadius;
         float normalizedZ = clampedZ / sphereRadius;
         
-        // Вычисляем угол направления ветра из нормализованных координат
         float horizontalAngle = 0f;
         if (Mathf.Abs(normalizedX) > 0.01f || Mathf.Abs(normalizedZ) > 0.01f)
         {
@@ -356,17 +353,13 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
             horizontalAngle = (horizontalAngle + 360f) % 360f;
         }
         
-        // Сила горизонтального ветра = длина вектора (нормализованная) в диапазоне [0, sqrt(2)]
-        // Но ограничиваем до 1 для квадрата (чтобы максимальная сила была 1)
         float horizontalStrength = Mathf.Clamp01(Mathf.Sqrt(normalizedX * normalizedX + normalizedZ * normalizedZ));
         
         if (shipController != null)
         {
-            // Для квадратного компаса: передаем X и Z напрямую
             shipController.SetWindHorizontalXZ(normalizedX, normalizedZ);
         }
         
-        // Сохраняем нормализованное направление для визуализации
         currentDirection = new Vector2(normalizedX, normalizedZ);
         UpdateVisualization();
     }
@@ -375,7 +368,6 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
     {
         if (shipController != null)
         {
-            // Получаем X и Z напрямую для квадратного компаса
             float x, z;
             shipController.GetWindHorizontalXZ(out x, out z);
             
@@ -383,12 +375,10 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
             
             if (directionIndicator != null && sphereContainer != null)
             {
-                // Для квадратного компаса: позиция = X и Z напрямую (в пикселях)
                 Vector2 position = new Vector2(x * sphereRadius, z * sphereRadius);
                 directionIndicator.anchoredPosition = position;
             }
             
-            // Для текста используем угол
             float horizontalAngle = Mathf.Atan2(x, z) * Mathf.Rad2Deg;
             horizontalAngle = (horizontalAngle + 360f) % 360f;
             
@@ -405,8 +395,7 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
                 else description = "Дует с СЕВЕРО-ЗАПАДА";
                 
                 directionText.text = $"{description}\n" +
-                                   $"Горизонтальный угол: {horizontalAngle:F0}°\n" +
-                                   $"(Вертикаль управляется ползунком)";
+                                   $"Горизонтальный угол: {horizontalAngle:F0}°";
                 
                 if (show3DComponents && componentsText != null)
                 {

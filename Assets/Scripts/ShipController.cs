@@ -149,6 +149,9 @@ public class ShipController : MonoBehaviour
 
     private enum MovementDirection { None, ForwardBackward, LeftRight }
     private MovementDirection currentMovementDirection = MovementDirection.None;
+    
+    // Автопилот
+    private bool autopilotActive = false;
 
     private void Awake()
     {
@@ -687,6 +690,8 @@ public class ShipController : MonoBehaviour
 
     private void HandleEngineSelection()
     {
+        // Если автопилот активен, игнорируем ручное управление
+        if (autopilotActive) return;
 
         if (Input.GetKeyDown(selectAllEngines))
         {
@@ -787,6 +792,9 @@ public class ShipController : MonoBehaviour
 
     private void HandleMovementDirectionSelection()
     {
+        // Если автопилот активен, игнорируем ручное управление
+        if (autopilotActive) return;
+        
         if (Input.GetKeyDown(selectForwardBackward))
         {
             currentMovementDirection = MovementDirection.ForwardBackward;
@@ -807,6 +815,8 @@ public class ShipController : MonoBehaviour
 
     private void HandleMovementDirectionInput()
     {
+        // Если автопилот активен, игнорируем ручное управление
+        if (autopilotActive) return;
 
         if (currentMovementDirection == MovementDirection.None) return;
         if (selectedEngines.Count == 0) return;
@@ -880,8 +890,16 @@ public class ShipController : MonoBehaviour
 
         if (showDebugInfo && Time.frameCount % 60 == 0)
         {
-            Debug.Log($"Направление движения: ({desiredMovementDirection.x:F2}, {desiredMovementDirection.y:F2}), " +
-                     $"Углы поворота: X={targetAngleX:F1}°, Y={targetAngleY:F1}°");
+            Debug.Log($"ShipController: === ПОВОРОТ ДВИГАТЕЛЕЙ ===");
+            Debug.Log($"  Входные данные (SetMovementDirection):");
+            Debug.Log($"    desiredMovementDirection.x={desiredMovementDirection.x:F3} (влево/вправо)");
+            Debug.Log($"    desiredMovementDirection.y={desiredMovementDirection.y:F3} (вперед/назад)");
+            Debug.Log($"  Вычисленные углы поворота:");
+            Debug.Log($"    targetAngleX={targetAngleX:F1}° (наклон вперед/назад, вокруг оси X/shipRight)");
+            Debug.Log($"    targetAngleY={targetAngleY:F1}° (поворот влево/вправо, вокруг оси Y/transform.up)");
+            Debug.Log($"  Интерпретация:");
+            Debug.Log($"    Если desiredMovementDirection.x > 0 (вправо) → targetAngleY < 0 (поворот влево)");
+            Debug.Log($"    Если desiredMovementDirection.y > 0 (вперед) → targetAngleX < 0 (наклон назад)");
         }
     }
 
@@ -1091,6 +1109,9 @@ public class ShipController : MonoBehaviour
 
     private void HandleThrustInput()
     {
+        // Если автопилот активен, игнорируем ручное управление
+        if (autopilotActive) return;
+        
         // Проверяем топливо перед обработкой ввода
         bool hasFuel = HasFuel();
         
@@ -1322,7 +1343,26 @@ public class ShipController : MonoBehaviour
                     if (Time.frameCount % 60 == 0)
                     {
                         Vector3 totalForceLocal = transform.InverseTransformDirection(totalForce);
-                        Debug.Log($"Total Force Applied: {totalForceLength:F1}N, Local: ({totalForceLocal.x:F2}, {totalForceLocal.y:F2}, {totalForceLocal.z:F2})");
+                        Debug.Log($"ShipController: === ПРИМЕНЕНИЕ СИЛЫ ===");
+                        Debug.Log($"  enginesTilted={enginesTilted}, applyForceToCenter={applyForceToCenter}");
+                        Debug.Log($"  desiredMovementDirection: ({desiredMovementDirection.x:F3}, {desiredMovementDirection.y:F3})");
+                        Debug.Log($"  Total Force (мировые): ({totalForce.x:F1}, {totalForce.y:F1}, {totalForce.z:F1}) N, Magnitude: {totalForceLength:F1}N");
+                        Debug.Log($"  Total Force (локальные): ({totalForceLocal.x:F2}, {totalForceLocal.y:F2}, {totalForceLocal.z:F2})");
+                        Debug.Log($"    X (влево/вправо): {totalForceLocal.x:F2}");
+                        Debug.Log($"    Y (вверх/вниз): {totalForceLocal.y:F2}");
+                        Debug.Log($"    Z (вперед/назад): {totalForceLocal.z:F2}");
+                        
+                        // Показываем направление каждого двигателя
+                        for (int i = 0; i < engines.Count && i < 4; i++)
+                        {
+                            if (engines[i] != null)
+                            {
+                                Vector3 engineForward = engines[i].transform.forward;
+                                Vector3 engineForwardLocal = transform.InverseTransformDirection(engineForward);
+                                float thrust = (i < engineThrusts.Length) ? engineThrusts[i] : 0f;
+                                Debug.Log($"  Двигатель {i}: Thrust={thrust:F2}, Forward (локальный)={engineForwardLocal}");
+                            }
+                        }
                     }
                 }
             }
@@ -2508,6 +2548,164 @@ public class ShipController : MonoBehaviour
         if (weight < 0.01f) return 0f;
 
         return totalCurrentThrust / weight;
+    }
+    
+    /// <summary>
+    /// Получает максимальный TWR (когда все двигатели на 100% тяги)
+    /// </summary>
+    public float GetMaxTWR()
+    {
+        if (shipRigidbody == null || engines.Count == 0) return 0f;
+        
+        float totalMaxThrust = maxThrustForce * engines.Count;
+        float weight = mass * gravityStrength;
+        
+        if (weight < 0.01f) return 0f;
+        
+        return totalMaxThrust / weight;
+    }
+    
+    // ========== АВТОПИЛОТ: Публичные методы для управления ==========
+    
+    /// <summary>
+    /// Включает/выключает режим автопилота (отключает ручное управление)
+    /// </summary>
+    public void SetAutopilotActive(bool active)
+    {
+        autopilotActive = active;
+        if (active)
+        {
+            // Выбираем все двигатели для автопилота
+            SelectAllEngines();
+            if (showDebugInfo)
+            {
+                Debug.Log("ShipController: Автопилот активирован. Ручное управление отключено.");
+            }
+        }
+        else
+        {
+            if (showDebugInfo)
+            {
+                Debug.Log("ShipController: Автопилот деактивирован. Ручное управление включено.");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Проверяет, активен ли автопилот
+    /// </summary>
+    public bool IsAutopilotActive()
+    {
+        return autopilotActive;
+    }
+    
+    /// <summary>
+    /// Устанавливает общую тягу для всех выбранных двигателей (0-1)
+    /// Используется автопилотом для управления кораблем
+    /// </summary>
+    public void SetThrust(float thrust)
+    {
+        if (!autopilotActive)
+        {
+            Debug.LogWarning("ShipController: SetThrust вызван, но автопилот не активен! Используйте SetAutopilotActive(true) сначала.");
+            return;
+        }
+        
+        currentThrust = Mathf.Clamp01(thrust);
+        UpdateEngineVisuals();
+    }
+    
+    /// <summary>
+    /// Устанавливает тягу конкретного двигателя (0-1)
+    /// Используется автопилотом для точного управления
+    /// </summary>
+    public void SetEngineThrust(int engineIndex, float thrust)
+    {
+        if (!autopilotActive)
+        {
+            Debug.LogWarning("ShipController: SetEngineThrust вызван, но автопилот не активен!");
+            return;
+        }
+        
+        if (engineIndex >= 0 && engineIndex < engineThrusts.Length)
+        {
+            engineThrusts[engineIndex] = Mathf.Clamp01(thrust);
+            if (engineIndex < engines.Count && engines[engineIndex] != null)
+            {
+                engines[engineIndex].SetThrust(engineThrusts[engineIndex]);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Устанавливает направление движения (поворот двигателей)
+    /// direction.x = -1..1 (влево/вправо)
+    /// direction.y = -1..1 (вперед/назад)
+    /// Используется автопилотом для управления направлением полета
+    /// </summary>
+    public void SetMovementDirection(Vector2 direction)
+    {
+        if (!autopilotActive)
+        {
+            Debug.LogWarning("ShipController: SetMovementDirection вызван, но автопилот не активен!");
+            return;
+        }
+        
+        desiredMovementDirection.x = Mathf.Clamp(direction.x, -maxDirectionOffset, maxDirectionOffset);
+        desiredMovementDirection.y = Mathf.Clamp(direction.y, -maxDirectionOffset, maxDirectionOffset);
+        
+        // Обновляем поворот двигателей
+        UpdateEngineRotationsFromMovementDirection();
+    }
+    
+    /// <summary>
+    /// Получает текущее направление движения
+    /// </summary>
+    public Vector2 GetMovementDirection()
+    {
+        return desiredMovementDirection;
+    }
+    
+    /// <summary>
+    /// Получает текущую скорость корабля
+    /// </summary>
+    public Vector3 GetVelocity()
+    {
+        if (shipRigidbody == null) return Vector3.zero;
+        return shipRigidbody.linearVelocity;
+    }
+    
+    /// <summary>
+    /// Получает текущую угловую скорость корабля
+    /// </summary>
+    public Vector3 GetAngularVelocity()
+    {
+        if (shipRigidbody == null) return Vector3.zero;
+        return shipRigidbody.angularVelocity;
+    }
+    
+    /// <summary>
+    /// Получает массу корабля
+    /// </summary>
+    public float GetMass()
+    {
+        return mass;
+    }
+    
+    /// <summary>
+    /// Получает силу гравитации
+    /// </summary>
+    public float GetGravityStrength()
+    {
+        return gravityStrength;
+    }
+    
+    /// <summary>
+    /// Получает максимальную тягу одного двигателя
+    /// </summary>
+    public float GetMaxThrustForce()
+    {
+        return maxThrustForce;
     }
 }
 

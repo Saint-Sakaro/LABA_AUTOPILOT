@@ -63,6 +63,11 @@ public class LandingRadar : MonoBehaviour
     private bool isScanning = false;
     private Vector3 lastShipPosition; // Последняя позиция корабля при начале сканирования
     
+    // Для контроля визуализации
+    private bool hasVisualizedSites = false; // Были ли визуализированы точки
+    private Vector3 firstVisualizationPosition; // Позиция корабля при первой визуализации
+    private const float VISUALIZATION_UPDATE_DISTANCE = 150f; // Расстояние смещения для обновления визуализации (м)
+    
     // События
     public delegate void SitesUpdatedDelegate(List<LandingSite> sites);
     public event SitesUpdatedDelegate OnSitesUpdated;
@@ -100,10 +105,46 @@ public class LandingRadar : MonoBehaviour
     {
         if (shipTransform == null) return;
         
-        // Проверяем, нужно ли начать новое сканирование
-        if (!isScanning && Time.time - lastScanTime >= scanUpdateInterval)
+        // Если точки уже визуализированы, проверяем смещение корабля
+        if (hasVisualizedSites)
         {
-            StartNewScan();
+            Vector3 currentPosition = shipTransform.position;
+            float deltaX = Mathf.Abs(currentPosition.x - firstVisualizationPosition.x);
+            float deltaZ = Mathf.Abs(currentPosition.z - firstVisualizationPosition.z);
+            
+            // Если сместились на 50м по X или Z, разрешаем новое сканирование
+            if (deltaX >= VISUALIZATION_UPDATE_DISTANCE || deltaZ >= VISUALIZATION_UPDATE_DISTANCE)
+            {
+                if (showDebugInfo)
+                {
+                    Debug.Log($"LandingRadar: Корабль сместился на {Mathf.Max(deltaX, deltaZ):F1}м от позиции визуализации. Разрешаю новое сканирование.");
+                }
+                hasVisualizedSites = false; // Разрешаем новое сканирование и визуализацию
+                // Останавливаем текущее сканирование, если оно активно
+                if (isScanning)
+                {
+                    isScanning = false;
+                    if (showDebugInfo)
+                    {
+                        Debug.Log("LandingRadar: Остановлено текущее сканирование для начала нового.");
+                    }
+                }
+            }
+            else
+            {
+                // Если не сместились достаточно, НЕ начинаем новое сканирование
+                return; // Выходим, не проверяя сканирование
+            }
+        }
+        
+        // Проверяем, нужно ли начать новое сканирование
+        // Если еще не было сканирования, запускаем сразу (не ждем интервал)
+        if (!isScanning)
+        {
+            if (lastScanTime == 0f || Time.time - lastScanTime >= scanUpdateInterval)
+            {
+                StartNewScan();
+            }
         }
         
         // Продолжаем сканирование, если оно активно
@@ -395,11 +436,25 @@ public class LandingRadar : MonoBehaviour
     }
     
     /// <summary>
+    /// Проверяет, были ли визуализированы точки
+    /// </summary>
+    public bool HasVisualizedSites()
+    {
+        return hasVisualizedSites && siteIndicators.Count > 0;
+    }
+    
+    /// <summary>
     /// Обновляет 3D индикаторы для найденных площадок
     /// </summary>
     private void Update3DIndicators()
     {
         if (!use3DIndicators) return;
+        
+        // Если точки уже визуализированы и корабль не сместился, не обновляем визуализацию
+        if (hasVisualizedSites)
+        {
+            return; // Пропускаем обновление визуализации
+        }
         
         // Удаляем старые индикаторы
         for (int i = siteIndicators.Count - 1; i >= 0; i--)
@@ -443,6 +498,17 @@ public class LandingRadar : MonoBehaviour
                 LandingSiteIndicator indicator = indicatorObj.AddComponent<LandingSiteIndicator>();
                 indicator.Initialize(site, shipTransform, minIndicatorSize, maxIndicatorSize, indicatorSizeMultiplier);
                 siteIndicators.Add(indicator);
+            }
+        }
+        
+        // После создания индикаторов помечаем, что визуализация выполнена
+        if (siteIndicators.Count > 0 && !hasVisualizedSites)
+        {
+            hasVisualizedSites = true;
+            firstVisualizationPosition = shipTransform != null ? shipTransform.position : Vector3.zero;
+            if (showDebugInfo)
+            {
+                Debug.Log($"LandingRadar: Визуализация точек завершена. Создано {siteIndicators.Count} индикаторов. Позиция корабля: {firstVisualizationPosition}");
             }
         }
     }
