@@ -2675,6 +2675,31 @@ public class ShipController : MonoBehaviour
     }
     
     /// <summary>
+    /// Устанавливает поворот конкретного двигателя
+    /// rotation.x = угол наклона вперед/назад (в градусах, вокруг оси X)
+    /// rotation.y = угол поворота влево/вправо (в градусах, вокруг оси Y)
+    /// Используется автопилотом для точного управления отдельными двигателями
+    /// </summary>
+    public void SetEngineRotation(int engineIndex, Vector2 rotation)
+    {
+        if (!autopilotActive)
+        {
+            Debug.LogWarning("ShipController: SetEngineRotation вызван, но автопилот не активен!");
+            return;
+        }
+        
+        if (engineIndex >= 0 && engineIndex < engineRotations.Length && engineIndex < initialEngineRotations.Length)
+        {
+            // Сохраняем углы относительно начальной ориентации
+            engineRotations[engineIndex].x = initialEngineRotations[engineIndex].x + rotation.x;
+            engineRotations[engineIndex].y = initialEngineRotations[engineIndex].y + rotation.y;
+            
+            // Применяем поворот немедленно
+            ApplyEngineRotation(engineIndex);
+        }
+    }
+    
+    /// <summary>
     /// Получает текущую скорость корабля
     /// </summary>
     public Vector3 GetVelocity()
