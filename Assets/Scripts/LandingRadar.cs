@@ -11,9 +11,15 @@ public class LandingRadar : MonoBehaviour
     [SerializeField] private Transform shipTransform; // Трансформ корабля (если не назначен, ищется автоматически)
     
     [Header("Basic Settings")]
-    [SerializeField] private float scanRadius = 100f; // Радиус сканирования под кораблем (метры)
+    [SerializeField] private float scanRadius = 200f; // Радиус сканирования под кораблем (метры)
     [SerializeField] private float gridResolution = 5f; // Разрешение сетки сканирования (метры)
     [SerializeField] private float scanUpdateInterval = 2f; // Интервал обновления сканирования (секунды)
+
+    [Header("Surface Sampling")]
+    [SerializeField] private LayerMask surfaceMask = ~0; // Слои для определения поверхности посадки
+    [SerializeField] private float surfaceRaycastHeight = 500f; // Высота старта луча для поиска поверхности
+    [SerializeField] private bool useSurfaceMask = true; // Если false, берем самый дальний хит без маски (земля ниже деревьев)
+    [SerializeField] private bool showSurfaceDebug = false;
     [SerializeField] private bool usePoissonSampling = true;
     [SerializeField] private bool useObstacleGridSampling = true;
     
@@ -49,7 +55,7 @@ public class LandingRadar : MonoBehaviour
     [SerializeField] private int maxSitesDuringScan = 200;
     
     // Параметры из кода (не настраиваются в Inspector)
-    private const float MIN_LANDING_SITE_SIZE = 30f; // Минимальный размер площадки (метры)
+    private const float MIN_LANDING_SITE_SIZE = 60f; // Минимальный размер площадки (метры)
     private const float MAX_SLOPE_ANGLE = 15f; // Максимальный допустимый наклон (градусы)
     private const float MAX_FLATNESS_DEVIATION = 8f; // Максимальное отклонение высот (метры)
     private const float MIN_OBSTACLE_DISTANCE = 20f; // Минимальное расстояние до препятствий (метры)
@@ -244,6 +250,49 @@ public class LandingRadar : MonoBehaviour
         {
             ContinueScanning();
         }
+    }
+
+    public float GetSurfaceHeightAtPosition(Vector3 worldPos)
+    {
+        float startY = Mathf.Max(worldPos.y + surfaceRaycastHeight, surfaceRaycastHeight);
+        Vector3 start = new Vector3(worldPos.x, startY, worldPos.z);
+        float maxDistance = surfaceRaycastHeight * 2f;
+        int mask = useSurfaceMask ? surfaceMask : ~0;
+        RaycastHit[] hits = Physics.RaycastAll(start, Vector3.down, maxDistance, mask, QueryTriggerInteraction.Ignore);
+        if (hits != null && hits.Length > 0)
+        {
+            float bestDistance = -1f;
+            float bestY = worldPos.y;
+            Collider bestCollider = null;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                RaycastHit hit = hits[i];
+                if (hit.collider == null) continue;
+                if (hit.distance > bestDistance)
+                {
+                    bestDistance = hit.distance;
+                    bestY = hit.point.y;
+                    bestCollider = hit.collider;
+                }
+            }
+            
+            if (bestDistance >= 0f)
+            {
+                if (showSurfaceDebug && Time.frameCount % 60 == 0)
+                {
+                    string colName = bestCollider != null ? bestCollider.name : "null";
+                    int colLayer = bestCollider != null ? bestCollider.gameObject.layer : -1;
+                    Debug.Log($"LandingRadar: SurfaceHit y={bestY:F2}, dist={bestDistance:F1}, collider={colName}, layer={colLayer}, mask={(useSurfaceMask ? surfaceMask.value : -1)}");
+                }
+                return bestY;
+            }
+        }
+        else if (showSurfaceDebug && Time.frameCount % 60 == 0)
+        {
+            Debug.LogWarning($"LandingRadar: SurfaceRaycast miss at ({worldPos.x:F1}, {worldPos.z:F1}), fallback to HillGenerator.");
+        }
+        
+        return HillGenerator.GetHeightAtPosition(worldPos);
     }
     
     /// <summary>
