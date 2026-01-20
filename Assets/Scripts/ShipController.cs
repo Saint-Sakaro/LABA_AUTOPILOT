@@ -2700,6 +2700,18 @@ public class ShipController : MonoBehaviour
         if (shipRigidbody == null) return Vector3.zero;
         return shipRigidbody.angularVelocity;
     }
+    
+    public Vector3 GetWorldCenterOfMass()
+    {
+        if (shipRigidbody == null) return transform.position;
+        return shipRigidbody.worldCenterOfMass;
+    }
+
+    public Transform GetEngineTransform(int engineIndex)
+    {
+        if (engineIndex < 0 || engineIndex >= engines.Count) return null;
+        return engines[engineIndex] != null ? engines[engineIndex].transform : null;
+    }
 
     /// <summary>
     /// Применяет момент (torque) от автопилота напрямую к Rigidbody

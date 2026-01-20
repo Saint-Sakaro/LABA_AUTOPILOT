@@ -29,6 +29,12 @@ public class LandingAutopilot : MonoBehaviour
     [SerializeField] private float directTorqueStrength = 2000f;
     [SerializeField] private float directTorqueDamping = 200f;
     
+    [Header("Geometry Thrust Stabilization")]
+    [SerializeField] private bool useGeometryThrustStabilization = false;
+    [SerializeField] private float geometryTorqueStrength = 2000f;
+    [SerializeField] private float geometryTorqueDamping = 200f;
+    [SerializeField] private float maxGeometryThrustDelta = 0.25f;
+    
     [Header("Thrust Smoothing")]
     [SerializeField] private float thrustChangeRate = 2f; // Максимальная скорость изменения тяги (в секунду, 0-1)
     [SerializeField] private float rotationStabilizationStrength = 1.0f; // Сила стабилизации rotation через дифференциальную тягу (0-1) - установлено в 1.0 для максимальной эффективности выравнивания к (0,0,0)
@@ -319,16 +325,11 @@ public class LandingAutopilot : MonoBehaviour
         
         // Инициализируем тягу всех двигателей и применяем её
         int engineCount = shipController.GetEngineCount();
-        for (int i = 0; i < engineCount && i < 4; i++)
+        EnsureEngineThrustArray();
+        for (int i = 0; i < engineCount; i++)
         {
             currentEngineThrusts[i] = currentThrust;
             shipController.SetEngineThrust(i, currentThrust); // Применяем тягу к двигателю
-        }
-        
-        // Если двигателей больше 4, устанавливаем тягу для остальных
-        for (int i = 4; i < engineCount; i++)
-        {
-            shipController.SetEngineThrust(i, currentThrust);
         }
         
         isActive = true;
@@ -833,25 +834,19 @@ public class LandingAutopilot : MonoBehaviour
             // Обновляем базовую тягу всех двигателей до currentThrust
             // StabilizeRotation будет использовать currentThrust как базовую и добавлять коррекцию
             int engineCount = shipController.GetEngineCount();
+            EnsureEngineThrustArray();
             float maxEngineThrustChange = thrustChangeRate * Time.deltaTime;
             if (currentVerticalSpeed > targetVerticalSpeed && targetThrust < currentThrust)
             {
                 // Падаем медленнее и нужно уменьшить тягу - увеличиваем скорость изменения в 3 раза
                 maxEngineThrustChange *= 3f;
             }
-            
-            for (int i = 0; i < engineCount && i < 4; i++)
+            for (int i = 0; i < engineCount; i++)
             {
                 // Плавно обновляем базовую тягу каждого двигателя до currentThrust
                 // StabilizeRotation добавит коррекцию для стабилизации rotation
                 currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], currentThrust, maxEngineThrustChange);
                 shipController.SetEngineThrust(i, currentEngineThrusts[i]);
-            }
-            
-            // Если двигателей больше 4, обновляем и их
-            for (int i = 4; i < engineCount; i++)
-            {
-                shipController.SetEngineThrust(i, currentThrust);
             }
         }
         
@@ -1213,30 +1208,55 @@ public class LandingAutopilot : MonoBehaviour
             isAligningToSurface = false; // Выравнивание завершено, но продолжаем контролировать rotation
         }
         
+        if (useGeometryThrustStabilization)
+        {
+            float angleRad = angle * Mathf.Deg2Rad;
+            Vector3 desiredTorque = axis.normalized * angleRad * geometryTorqueStrength - angularVelocity * geometryTorqueDamping;
+            bool applied = ApplyTorqueWithThrust(desiredTorque, currentThrust, 0.05f, maxGeometryThrustDelta, 5f);
+            if (applied)
+            {
+                return;
+            }
+        }
+        
         // Применяем коррекцию через управление двигателями
         // Для крена: разная тяга левых/правых двигателей
         // Для рыскания: поворот двигателей влево/вправо
         // Для тангажа: поворот двигателей вперед/назад
         
         int engineCount = shipController.GetEngineCount();
-        float[] targetEngineThrusts = new float[4]; // Объявляем вне блока для использования в логировании
+        EnsureEngineThrustArray();
+        float[] targetEngineThrusts = new float[engineCount]; // Для логирования и применения
         float rollStrength = 0f; // Для логирования
         float pitchStrength = 0f; // Для логирования
         float yawStrength = 0f; // Для логирования
         
         if (engineCount >= 4)
         {
-            // Предполагаем расположение: 0=левый передний, 1=правый передний, 2=левый задний, 3=правый задний
+            bool hasQuad = TryGetEngineQuadrants(out int frontLeft, out int frontRight, out int backLeft, out int backRight);
+            if (!hasQuad)
+            {
+                frontLeft = 0;
+                frontRight = 1;
+                backLeft = 2;
+                backRight = 3;
+            }
+            
             // Крен (roll): увеличиваем тягу левых двигателей, уменьшаем правых
             // Тангаж (pitch): увеличиваем тягу передних двигателей, уменьшаем задних
             float baseThrust = currentThrust; // Используем текущую тягу как базовую
+            
+            for (int i = 0; i < engineCount; i++)
+            {
+                targetEngineThrusts[i] = baseThrust;
+            }
             
             // Если базовая тяга 0, не добавляем коррекцию (чтобы двигатели оставались на 0)
             // Коррекция нужна только для стабилизации, а не для создания подъемной силы
             if (baseThrust <= 0.001f)
             {
                 // Базовая тяга 0 - устанавливаем все двигатели на 0
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < engineCount; i++)
                 {
                     targetEngineThrusts[i] = 0f;
                 }
@@ -1264,20 +1284,25 @@ public class LandingAutopilot : MonoBehaviour
                 yawStrength = yawCorrection * thrustCorrectionStrength * alignmentStrength;
                 
                 // Применяем ВСЕ три коррекции одновременно:
-                // E0 (левый передний): +roll (если крен влево), -pitch (если нос вниз), -yaw (если поворот влево)
-                // E1 (правый передний): -roll (если крен вправо), -pitch (если нос вниз), +yaw (если поворот влево)
-                // E2 (левый задний): +roll (если крен влево), +pitch (если нос вверх), -yaw (если поворот влево)
-                // E3 (правый задний): -roll (если крен вправо), +pitch (если нос вверх), +yaw (если поворот влево)
-                targetEngineThrusts[0] = baseThrust + rollStrength - pitchStrength - yawStrength; // Левый передний
-                targetEngineThrusts[1] = baseThrust - rollStrength - pitchStrength + yawStrength; // Правый передний
-                targetEngineThrusts[2] = baseThrust + rollStrength + pitchStrength - yawStrength; // Левый задний
-                targetEngineThrusts[3] = baseThrust - rollStrength + pitchStrength + yawStrength; // Правый задний
+                // FL: +roll, -pitch, -yaw
+                // FR: -roll, -pitch, +yaw
+                // BL: +roll, +pitch, -yaw
+                // BR: -roll, +pitch, +yaw
+                targetEngineThrusts[frontLeft] = baseThrust + rollStrength - pitchStrength - yawStrength;
+                targetEngineThrusts[frontRight] = baseThrust - rollStrength - pitchStrength + yawStrength;
+                targetEngineThrusts[backLeft] = baseThrust + rollStrength + pitchStrength - yawStrength;
+                targetEngineThrusts[backRight] = baseThrust - rollStrength + pitchStrength + yawStrength;
             }
             
             // Дополнительная защита: проверяем, что ни один двигатель не стал отрицательным или слишком малым
             // Используем адаптивный минимум в зависимости от ошибки ориентации для лучшей стабилизации
             float minEngineThrustForAlignment = angleError > 5f ? 0.02f : 0.05f; // 2% для больших ошибок, 5% для малых
-            float minThrust = Mathf.Min(targetEngineThrusts[0], targetEngineThrusts[1], targetEngineThrusts[2], targetEngineThrusts[3]);
+            float minThrust = Mathf.Min(
+                targetEngineThrusts[frontLeft],
+                targetEngineThrusts[frontRight],
+                targetEngineThrusts[backLeft],
+                targetEngineThrusts[backRight]
+            );
             if (minThrust < minEngineThrustForAlignment)
             {
                 // Уменьшаем все коррекции пропорционально, чтобы минимальная тяга стала >= minEngineThrustForAlignment
@@ -1286,10 +1311,10 @@ public class LandingAutopilot : MonoBehaviour
                 pitchStrength *= reductionFactor;
                 yawStrength *= reductionFactor;
                 // Пересчитываем тягу двигателей с уменьшенными коррекциями
-                targetEngineThrusts[0] = baseThrust + rollStrength - pitchStrength - yawStrength;
-                targetEngineThrusts[1] = baseThrust - rollStrength - pitchStrength + yawStrength;
-                targetEngineThrusts[2] = baseThrust + rollStrength + pitchStrength - yawStrength;
-                targetEngineThrusts[3] = baseThrust - rollStrength + pitchStrength + yawStrength;
+                targetEngineThrusts[frontLeft] = baseThrust + rollStrength - pitchStrength - yawStrength;
+                targetEngineThrusts[frontRight] = baseThrust - rollStrength - pitchStrength + yawStrength;
+                targetEngineThrusts[backLeft] = baseThrust + rollStrength + pitchStrength - yawStrength;
+                targetEngineThrusts[backRight] = baseThrust - rollStrength + pitchStrength + yawStrength;
             }
             
             // Плавное изменение тяги каждого двигателя (не резко!)
@@ -1297,14 +1322,18 @@ public class LandingAutopilot : MonoBehaviour
             float alignmentThrustChangeRate = thrustChangeRate * 5.0f; // Увеличено для более быстрого выравнивания
             float maxThrustChange = alignmentThrustChangeRate * Time.deltaTime;
             
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < engineCount; i++)
             {
-                targetEngineThrusts[i] = Mathf.Clamp01(targetEngineThrusts[i]);
-                // Обеспечиваем минимальную тягу для стабильности
-                targetEngineThrusts[i] = Mathf.Max(targetEngineThrusts[i], minEngineThrustForAlignment);
-                currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], targetEngineThrusts[i], maxThrustChange);
-                // Также применяем минимум к текущей тяге для плавности
+                float target = Mathf.Clamp01(targetEngineThrusts[i]);
+                if (baseThrust > 0.001f)
+                {
+                    target = Mathf.Max(target, minEngineThrustForAlignment);
+                }
+                currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], target, maxThrustChange);
+                if (baseThrust > 0.001f)
+                {
                 currentEngineThrusts[i] = Mathf.Max(currentEngineThrusts[i], minEngineThrustForAlignment);
+                }
                 shipController.SetEngineThrust(i, currentEngineThrusts[i]);
             }
         }
@@ -1346,10 +1375,18 @@ public class LandingAutopilot : MonoBehaviour
             Debug.Log($"    baseThrust: {currentThrust:F3}");
             if (engineCount >= 4)
             {
-                Debug.Log($"    Engine 0 (левый передний): {targetEngineThrusts[0]:F3} (roll:{rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{-yawStrength:F3})");
-                Debug.Log($"    Engine 1 (правый передний): {targetEngineThrusts[1]:F3} (roll:{-rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{yawStrength:F3})");
-                Debug.Log($"    Engine 2 (левый задний): {targetEngineThrusts[2]:F3} (roll:{rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{-yawStrength:F3})");
-                Debug.Log($"    Engine 3 (правый задний): {targetEngineThrusts[3]:F3} (roll:{-rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{yawStrength:F3})");
+                bool hasQuad = TryGetEngineQuadrants(out int frontLeft, out int frontRight, out int backLeft, out int backRight);
+                if (!hasQuad)
+                {
+                    frontLeft = 0;
+                    frontRight = 1;
+                    backLeft = 2;
+                    backRight = 3;
+                }
+                Debug.Log($"    Engine FL({frontLeft}): {targetEngineThrusts[frontLeft]:F3} (roll:{rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{-yawStrength:F3})");
+                Debug.Log($"    Engine FR({frontRight}): {targetEngineThrusts[frontRight]:F3} (roll:{-rollStrength:F3}, pitch:{-pitchStrength:F3}, yaw:{yawStrength:F3})");
+                Debug.Log($"    Engine BL({backLeft}): {targetEngineThrusts[backLeft]:F3} (roll:{rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{-yawStrength:F3})");
+                Debug.Log($"    Engine BR({backRight}): {targetEngineThrusts[backRight]:F3} (roll:{-rollStrength:F3}, pitch:{pitchStrength:F3}, yaw:{yawStrength:F3})");
             }
             Debug.Log($"    ВСЕ коррекции rotation через дифференциальную тягу двигателей (НЕ через movementDirection)");
             Debug.Log($"  СТАТУС:");
@@ -1361,6 +1398,250 @@ public class LandingAutopilot : MonoBehaviour
     }
     
     // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
+    
+    private void EnsureEngineThrustArray()
+    {
+        int engineCount = shipController.GetEngineCount();
+        if (currentEngineThrusts == null || currentEngineThrusts.Length != engineCount)
+        {
+            float[] newThrusts = new float[engineCount];
+            if (currentEngineThrusts != null)
+            {
+                int copyCount = Mathf.Min(currentEngineThrusts.Length, engineCount);
+                for (int i = 0; i < copyCount; i++)
+                {
+                    newThrusts[i] = currentEngineThrusts[i];
+                }
+            }
+            currentEngineThrusts = newThrusts;
+        }
+    }
+    
+    private bool ApplyTorqueWithThrust(
+        Vector3 desiredTorqueWorld,
+        float baseThrust,
+        float minThrust,
+        float maxDeltaThrust,
+        float changeRateMultiplier)
+    {
+        int engineCount = shipController.GetEngineCount();
+        if (engineCount < 3) return false;
+        
+        EnsureEngineThrustArray();
+        
+        Vector3 centerOfMass = shipController.GetWorldCenterOfMass();
+        float maxThrustForce = shipController.GetMaxThrustForce();
+        Vector3[] torqueColumns = new Vector3[engineCount];
+        bool[] valid = new bool[engineCount];
+        int validCount = 0;
+        
+        for (int i = 0; i < engineCount; i++)
+        {
+            Transform engineTransform = shipController.GetEngineTransform(i);
+            if (engineTransform == null) continue;
+            
+            Vector3 r = engineTransform.position - centerOfMass;
+            Vector3 forceDir = -engineTransform.forward;
+            Vector3 torquePerThrust = Vector3.Cross(r, forceDir * maxThrustForce);
+            torqueColumns[i] = torquePerThrust;
+            valid[i] = true;
+            validCount++;
+        }
+        
+        if (validCount < 3) return false;
+        
+        float m00 = 0f, m01 = 0f, m02 = 0f;
+        float m10 = 0f, m11 = 0f, m12 = 0f;
+        float m20 = 0f, m21 = 0f, m22 = 0f;
+        
+        for (int i = 0; i < engineCount; i++)
+        {
+            if (!valid[i]) continue;
+            Vector3 c = torqueColumns[i];
+            m00 += c.x * c.x;
+            m01 += c.x * c.y;
+            m02 += c.x * c.z;
+            m10 += c.y * c.x;
+            m11 += c.y * c.y;
+            m12 += c.y * c.z;
+            m20 += c.z * c.x;
+            m21 += c.z * c.y;
+            m22 += c.z * c.z;
+        }
+        
+        if (!TryInvertMatrix3x3(m00, m01, m02, m10, m11, m12, m20, m21, m22,
+                out float i00, out float i01, out float i02,
+                out float i10, out float i11, out float i12,
+                out float i20, out float i21, out float i22))
+        {
+            return false;
+        }
+        
+        Vector3 v = new Vector3(
+            i00 * desiredTorqueWorld.x + i01 * desiredTorqueWorld.y + i02 * desiredTorqueWorld.z,
+            i10 * desiredTorqueWorld.x + i11 * desiredTorqueWorld.y + i12 * desiredTorqueWorld.z,
+            i20 * desiredTorqueWorld.x + i21 * desiredTorqueWorld.y + i22 * desiredTorqueWorld.z
+        );
+        
+        float maxChange = thrustChangeRate * changeRateMultiplier * Time.deltaTime;
+        for (int i = 0; i < engineCount; i++)
+        {
+            float target = baseThrust;
+            if (valid[i])
+            {
+                float delta = Vector3.Dot(torqueColumns[i], v);
+                delta = Mathf.Clamp(delta, -maxDeltaThrust, maxDeltaThrust);
+                target = baseThrust + delta;
+            }
+            
+            target = Mathf.Clamp01(target);
+            if (minThrust > 0f)
+            {
+                target = Mathf.Max(target, minThrust);
+            }
+            
+            currentEngineThrusts[i] = Mathf.MoveTowards(currentEngineThrusts[i], target, maxChange);
+            if (minThrust > 0f)
+            {
+                currentEngineThrusts[i] = Mathf.Max(currentEngineThrusts[i], minThrust);
+            }
+            shipController.SetEngineThrust(i, currentEngineThrusts[i]);
+        }
+        
+        return true;
+    }
+    
+    private bool TryInvertMatrix3x3(
+        float m00, float m01, float m02,
+        float m10, float m11, float m12,
+        float m20, float m21, float m22,
+        out float i00, out float i01, out float i02,
+        out float i10, out float i11, out float i12,
+        out float i20, out float i21, out float i22)
+    {
+        float det = m00 * (m11 * m22 - m12 * m21)
+                  - m01 * (m10 * m22 - m12 * m20)
+                  + m02 * (m10 * m21 - m11 * m20);
+        
+        if (Mathf.Abs(det) < 1e-6f)
+        {
+            i00 = i01 = i02 = 0f;
+            i10 = i11 = i12 = 0f;
+            i20 = i21 = i22 = 0f;
+            return false;
+        }
+        
+        float invDet = 1f / det;
+        i00 = (m11 * m22 - m12 * m21) * invDet;
+        i01 = (m02 * m21 - m01 * m22) * invDet;
+        i02 = (m01 * m12 - m02 * m11) * invDet;
+        i10 = (m12 * m20 - m10 * m22) * invDet;
+        i11 = (m00 * m22 - m02 * m20) * invDet;
+        i12 = (m02 * m10 - m00 * m12) * invDet;
+        i20 = (m10 * m21 - m11 * m20) * invDet;
+        i21 = (m01 * m20 - m00 * m21) * invDet;
+        i22 = (m00 * m11 - m01 * m10) * invDet;
+        
+        return true;
+    }
+    
+    private bool TryGetEngineQuadrants(out int frontLeft, out int frontRight, out int backLeft, out int backRight)
+    {
+        frontLeft = -1;
+        frontRight = -1;
+        backLeft = -1;
+        backRight = -1;
+        
+        int engineCount = shipController.GetEngineCount();
+        if (engineCount < 4) return false;
+        
+        float bestFL = float.NegativeInfinity;
+        float bestFR = float.NegativeInfinity;
+        float bestBL = float.NegativeInfinity;
+        float bestBR = float.NegativeInfinity;
+        
+        for (int i = 0; i < engineCount; i++)
+        {
+            Transform engineTransform = shipController.GetEngineTransform(i);
+            if (engineTransform == null) continue;
+            
+            Vector3 localPos = shipController.transform.InverseTransformPoint(engineTransform.position);
+            float score = Mathf.Abs(localPos.x) + Mathf.Abs(localPos.z);
+            
+            if (localPos.z >= 0f)
+            {
+                if (localPos.x <= 0f)
+                {
+                    if (score > bestFL)
+                    {
+                        bestFL = score;
+                        frontLeft = i;
+                    }
+                }
+                else
+                {
+                    if (score > bestFR)
+                    {
+                        bestFR = score;
+                        frontRight = i;
+                    }
+                }
+            }
+            else
+            {
+                if (localPos.x <= 0f)
+                {
+                    if (score > bestBL)
+                    {
+                        bestBL = score;
+                        backLeft = i;
+                    }
+                }
+                else
+                {
+                    if (score > bestBR)
+                    {
+                        bestBR = score;
+                        backRight = i;
+                    }
+                }
+            }
+        }
+        
+        if (frontLeft >= 0 && frontRight >= 0 && backLeft >= 0 && backRight >= 0)
+        {
+            return true;
+        }
+        
+        // Fallback: сортируем по Z, затем выбираем левый/правый по X
+        List<(int index, Vector3 localPos)> engines = new List<(int, Vector3)>();
+        for (int i = 0; i < engineCount; i++)
+        {
+            Transform engineTransform = shipController.GetEngineTransform(i);
+            if (engineTransform == null) continue;
+            Vector3 localPos = shipController.transform.InverseTransformPoint(engineTransform.position);
+            engines.Add((i, localPos));
+        }
+        
+        if (engines.Count < 4) return false;
+        
+        var sortedByZ = engines.OrderByDescending(e => e.localPos.z).ToList();
+        int half = sortedByZ.Count / 2;
+        var frontGroup = sortedByZ.Take(half).ToList();
+        var backGroup = sortedByZ.Skip(half).ToList();
+        
+        var frontLeftEntry = frontGroup.OrderBy(e => e.localPos.x).FirstOrDefault();
+        var frontRightEntry = frontGroup.OrderByDescending(e => e.localPos.x).FirstOrDefault();
+        var backLeftEntry = backGroup.OrderBy(e => e.localPos.x).FirstOrDefault();
+        var backRightEntry = backGroup.OrderByDescending(e => e.localPos.x).FirstOrDefault();
+        
+        frontLeft = frontLeftEntry.index;
+        frontRight = frontRightEntry.index;
+        backLeft = backLeftEntry.index;
+        backRight = backRightEntry.index;
+        
+        return frontLeft >= 0 && frontRight >= 0 && backLeft >= 0 && backRight >= 0;
+    }
     
     /// <summary>
     /// Стабилизация rotation через управление отдельными двигателями
@@ -1403,6 +1684,18 @@ public class LandingAutopilot : MonoBehaviour
         Vector3 desiredUp = Vector3.up; // Ориентация вертикально вверх
         Vector3 currentUp = shipTransform.up;
         float orientationError = Vector3.Angle(currentUp, desiredUp);
+        
+        // Геометрическое распределение тяги по двигателям для стабилизации
+        if (useGeometryThrustStabilization)
+        {
+            Vector3 correctionAxis = Vector3.Cross(currentUp, desiredUp);
+            Vector3 desiredTorque = correctionAxis * geometryTorqueStrength - angularVelocity * geometryTorqueDamping;
+            bool applied = ApplyTorqueWithThrust(desiredTorque, currentThrust, 0.05f, maxGeometryThrustDelta, 5f);
+            if (applied)
+            {
+                return;
+            }
+        }
         
         // Прямое стабилизирующее torque (без дифференциальной тяги)
         if (useDirectTorqueStabilization)
@@ -1531,12 +1824,17 @@ public class LandingAutopilot : MonoBehaviour
         pitchCorrection = Mathf.Clamp(pitchCorrection * rotationStabilizationStrength * correctionMultiplier, -maxCorrectionAbsolute, maxCorrectionAbsolute);
         
         int engineCount = shipController.GetEngineCount();
+        EnsureEngineThrustArray();
         if (engineCount >= 4)
         {
-            // Предполагаем расположение: 0=левый передний, 1=правый передний, 2=левый задний, 3=правый задний
-            // Крен (roll): увеличиваем тягу левых двигателей, уменьшаем правых
-            // Тангаж (pitch): увеличиваем тягу передних двигателей, уменьшаем задних
-            // Рыскание (yaw): поворот двигателей влево/вправо
+            bool hasQuad = TryGetEngineQuadrants(out int frontLeft, out int frontRight, out int backLeft, out int backRight);
+            if (!hasQuad)
+            {
+                frontLeft = 0;
+                frontRight = 1;
+                backLeft = 2;
+                backRight = 3;
+            }
             
             float baseThrust = currentThrust; // Используем текущую тягу как базовую
             
@@ -1547,7 +1845,11 @@ public class LandingAutopilot : MonoBehaviour
             
             // Вычисляем целевую тягу для каждого двигателя
             // Всегда используем эффективную базовую тягу + коррекцию для стабилизации
-            float[] targetEngineThrusts = new float[4];
+            float[] targetEngineThrusts = new float[engineCount];
+            for (int i = 0; i < engineCount; i++)
+            {
+                targetEngineThrusts[i] = effectiveBaseThrust;
+            }
             
             // Добавляем коррекцию для стабилизации rotation
             // Используем effectiveBaseThrust, который включает минимальную тягу для стабилизации
@@ -1556,10 +1858,10 @@ public class LandingAutopilot : MonoBehaviour
             // 1. Крен (roll): разная тяга левых/правых двигателей
             // 2. Тангаж (pitch): разная тяга передних/задних двигателей
             // 3. Рыскание (yaw): диагональная дифференциальная тяга (поворот влево/вправо)
-            targetEngineThrusts[0] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection; // Левый передний: +roll, -pitch, -yaw
-            targetEngineThrusts[1] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection; // Правый передний: -roll, -pitch, +yaw
-            targetEngineThrusts[2] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection; // Левый задний: +roll, +pitch, -yaw
-            targetEngineThrusts[3] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection; // Правый задний: -roll, +pitch, +yaw
+            targetEngineThrusts[frontLeft] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection;
+            targetEngineThrusts[frontRight] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection;
+            targetEngineThrusts[backLeft] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection;
+            targetEngineThrusts[backRight] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection;
             
             // Дополнительная защита: проверяем, что ни один двигатель не стал отрицательным или слишком малым
             // Используем адаптивный минимум в зависимости от ошибки ориентации для лучшей стабилизации
@@ -1579,7 +1881,12 @@ public class LandingAutopilot : MonoBehaviour
             {
                 minEngineThrustForProtection = 0.05f; // 5% для малых ошибок - стабильность важнее
             }
-            float minThrust = Mathf.Min(targetEngineThrusts[0], targetEngineThrusts[1], targetEngineThrusts[2], targetEngineThrusts[3]);
+            float minThrust = Mathf.Min(
+                targetEngineThrusts[frontLeft],
+                targetEngineThrusts[frontRight],
+                targetEngineThrusts[backLeft],
+                targetEngineThrusts[backRight]
+            );
             if (minThrust < minEngineThrustForProtection)
             {
                 // Уменьшаем все коррекции пропорционально, чтобы минимальная тяга стала >= minEngineThrustForProtection
@@ -1588,10 +1895,10 @@ public class LandingAutopilot : MonoBehaviour
                 pitchCorrection *= reductionFactor;
                 yawCorrection *= reductionFactor;
                 // Пересчитываем тягу двигателей с уменьшенными коррекциями
-                targetEngineThrusts[0] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection;
-                targetEngineThrusts[1] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection;
-                targetEngineThrusts[2] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection;
-                targetEngineThrusts[3] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection;
+                targetEngineThrusts[frontLeft] = effectiveBaseThrust + rollCorrection - pitchCorrection - yawCorrection;
+                targetEngineThrusts[frontRight] = effectiveBaseThrust - rollCorrection - pitchCorrection + yawCorrection;
+                targetEngineThrusts[backLeft] = effectiveBaseThrust + rollCorrection + pitchCorrection - yawCorrection;
+                targetEngineThrusts[backRight] = effectiveBaseThrust - rollCorrection + pitchCorrection + yawCorrection;
             }
             
             // Плавное изменение тяги каждого двигателя (не резко!)
@@ -1603,7 +1910,7 @@ public class LandingAutopilot : MonoBehaviour
             // ВАЖНО: Обеспечиваем минимальную тягу для каждого двигателя для стабильности
             // Используем ту же переменную minEngineThrustForProtection, что и выше, для согласованности
             
-            for (int i = 0; i < engineCount && i < 4; i++)
+            for (int i = 0; i < engineCount; i++)
             {
                 targetEngineThrusts[i] = Mathf.Clamp01(targetEngineThrusts[i]);
                 // Обеспечиваем минимальную тягу для стабильности (используем ту же переменную, что и выше)
@@ -1678,14 +1985,22 @@ public class LandingAutopilot : MonoBehaviour
                 Debug.Log($"    correctionMultiplier: {correctionMultiplier:F2}, maxCorrectionAbsolute: {maxCorrectionAbsolute:F3} (70% от baseThrust={effectiveBaseThrustForCorrection:F3})");
                 Debug.Log($"    baseThrust: {baseThrust:F3}, effectiveBaseThrust: {effectiveBaseThrust:F3}");
                 Debug.Log($"  Тяга двигателей:");
-                Debug.Log($"    E0 (левый передний): {targetEngineThrusts[0]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} - pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
-                Debug.Log($"    E1 (правый передний): {targetEngineThrusts[1]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} - pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
-                Debug.Log($"    E2 (левый задний): {targetEngineThrusts[2]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} + pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
-                Debug.Log($"    E3 (правый задний): {targetEngineThrusts[3]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} + pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
+                bool logHasQuad = TryGetEngineQuadrants(out int logFrontLeft, out int logFrontRight, out int logBackLeft, out int logBackRight);
+                if (!logHasQuad)
+                {
+                    logFrontLeft = 0;
+                    logFrontRight = 1;
+                    logBackLeft = 2;
+                    logBackRight = 3;
+                }
+                Debug.Log($"    FL({logFrontLeft}): {targetEngineThrusts[logFrontLeft]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} - pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
+                Debug.Log($"    FR({logFrontRight}): {targetEngineThrusts[logFrontRight]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} - pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
+                Debug.Log($"    BL({logBackLeft}): {targetEngineThrusts[logBackLeft]:F3} (base={effectiveBaseThrust:F3} + roll={rollCorrection:F3} + pitch={pitchCorrection:F3} - yaw={yawCorrection:F3})");
+                Debug.Log($"    BR({logBackRight}): {targetEngineThrusts[logBackRight]:F3} (base={effectiveBaseThrust:F3} - roll={rollCorrection:F3} + pitch={pitchCorrection:F3} + yaw={yawCorrection:F3})");
                 Debug.Log($"  ЛОГИКА КОРРЕКЦИЙ:");
-                Debug.Log($"    Roll: {rollCorrection:F3} (rollCorrection > 0 = крен влево → увеличиваем E0, E2; rollCorrection < 0 = крен вправо → увеличиваем E1, E3)");
-                Debug.Log($"    Pitch: {pitchCorrection:F3} (pitchCorrection > 0 = нос вниз → увеличиваем E0, E1; pitchCorrection < 0 = нос вверх → увеличиваем E2, E3)");
-                Debug.Log($"    Yaw: {yawCorrection:F3} (yawCorrection > 0 = поворот влево → увеличиваем E1, E3; yawCorrection < 0 = поворот вправо → увеличиваем E0, E2)");
+                Debug.Log($"    Roll: {rollCorrection:F3} (roll > 0 → увеличиваем FL, BL; roll < 0 → увеличиваем FR, BR)");
+                Debug.Log($"    Pitch: {pitchCorrection:F3} (pitch > 0 → увеличиваем FL, FR; pitch < 0 → увеличиваем BL, BR)");
+                Debug.Log($"    Yaw: {yawCorrection:F3} (yaw > 0 → увеличиваем FR, BR; yaw < 0 → увеличиваем FL, BL)");
             }
         }
         else
