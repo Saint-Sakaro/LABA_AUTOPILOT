@@ -3,7 +3,9 @@ using UnityEngine;
 public class LiquidLeakManager : MonoBehaviour
 {
     [SerializeField] private ParticleSystem leakParticleSystem;
-    [SerializeField] private float leakParticleSpeed = 5f;
+    [SerializeField] [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0052:Remove unread private members")]
+    private float leakParticleSpeed = 5f;
+
 
     private LiquidTank attachedTank;
     private ParticleSystem.EmissionModule emissionModule;
@@ -48,7 +50,6 @@ public class LiquidLeakManager : MonoBehaviour
             }
             else
             {
-                // Отключаем в двух случаях: пробоина закрыта ИЛИ жидкость закончилась
                 if (emissionModule.enabled)
                 {
                     emissionModule.enabled = false;

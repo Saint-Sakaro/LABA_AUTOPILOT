@@ -70,7 +70,6 @@ public class PlatformGenerator : MonoBehaviour
                 cachedPlatforms[platformCoord] = loadedPlatforms[platformCoord];
                 loadedPlatforms[platformCoord].SetActive(false);
                 
-                // Отключаем деревья
                 if (platformTrees.ContainsKey(platformCoord))
                 {
                     foreach (var tree in platformTrees[platformCoord])
@@ -100,7 +99,6 @@ public class PlatformGenerator : MonoBehaviour
                     platform.SetActive(true);
                     cachedPlatforms.Remove(platformCoord);
                     
-                    // Включаем деревья
                     if (platformTrees.ContainsKey(platformCoord))
                     {
                         foreach (var tree in platformTrees[platformCoord])
@@ -141,7 +139,6 @@ public class PlatformGenerator : MonoBehaviour
         meshCollider.convex = false;
         meshCollider.sharedMesh = mesh;
 
-        // Создаём деревья для этой платформы
         CreateTreesForPlatform(platformCoord, platformObject.transform);
         CreateRocksForPlatform(platformCoord, platformObject.transform);
 
@@ -153,6 +150,7 @@ public class PlatformGenerator : MonoBehaviour
         List<TreeData> treesData = TreeGenerator.GetTreesForPlatform(platformCoord, platformSize);
         List<GameObject> trees = new List<GameObject>();
 
+        Debug.Log($"Платформа {platformCoord}: найдено {treesData.Count} деревьев");
 
         foreach (var treeData in treesData)
         {
@@ -162,8 +160,8 @@ public class PlatformGenerator : MonoBehaviour
                 treeInstance.transform.parent = parentTransform;
                 treeInstance.transform.position = treeData.position;
                 treeInstance.transform.rotation = Quaternion.Euler(-90f, treeData.rotation * Mathf.Rad2Deg, 0);
-                // treeInstance.transform.localScale = new Vector3(1f, 1f, 1f); // Масштаб 50x
                     
+                Debug.Log($"Создано дерево типа {treeData.treeType} в позиции {treeData.position}");
                 trees.Add(treeInstance);
             }
             else
@@ -189,7 +187,6 @@ public class PlatformGenerator : MonoBehaviour
                 rockInstance.transform.parent = parentTransform;
                 rockInstance.transform.position = rockData.position;
                 rockInstance.transform.rotation = Quaternion.Euler(-90f, rockData.rotation * Mathf.Rad2Deg, 0);
-                // rockInstance.transform.localScale = new Vector3(50f, 50f, 50f);
                 
                 rocks.Add(rockInstance);
             }
