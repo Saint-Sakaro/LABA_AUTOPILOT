@@ -14,6 +14,8 @@ public class LandingRadar : MonoBehaviour
     [SerializeField] private float scanRadius = 100f; // Радиус сканирования под кораблем (метры)
     [SerializeField] private float gridResolution = 5f; // Разрешение сетки сканирования (метры)
     [SerializeField] private float scanUpdateInterval = 2f; // Интервал обновления сканирования (секунды)
+    [SerializeField] private bool usePoissonSampling = true;
+    [SerializeField] private bool useObstacleGridSampling = true;
     
     [Header("3D Visualization")]
     [SerializeField] private bool use3DIndicators = true; // Использовать 3D индикаторы
@@ -32,6 +34,20 @@ public class LandingRadar : MonoBehaviour
     [SerializeField] private Color invalidPointColor = Color.red; // Цвет для неподходящих точек
     [SerializeField] private float pointVisualSize = 2f; // Размер визуализации точек
     
+    [Header("Obstacle Detection")]
+    [SerializeField] private LayerMask obstacleMask = ~0; // Слои препятствий (деревья, камни, здания)
+    [SerializeField] private bool earlyRejectObstacles = true;
+    [SerializeField] private float obstacleClearanceRadius = 20f; // Минимальный отступ от препятствий для точки
+    [SerializeField] private bool showObstacleDebug = false;
+    [SerializeField] private bool excludeGroundByName = true;
+    [SerializeField] private string[] excludedObstacleNameKeywords = { "ground", "terrain", "platform" };
+    [SerializeField] private float maxObstacleFootprint = 200f; // Игнорировать слишком большие коллайдеры
+    
+    [Header("Performance")]
+    [SerializeField] private bool groupSitesDuringScan = true;
+    [SerializeField] private int groupSitesEvery = 40;
+    [SerializeField] private int maxSitesDuringScan = 200;
+    
     // Параметры из кода (не настраиваются в Inspector)
     private const float MIN_LANDING_SITE_SIZE = 30f; // Минимальный размер площадки (метры)
     private const float MAX_SLOPE_ANGLE = 15f; // Максимальный допустимый наклон (градусы)
@@ -39,13 +55,18 @@ public class LandingRadar : MonoBehaviour
     private const float MIN_OBSTACLE_DISTANCE = 20f; // Минимальное расстояние до препятствий (метры)
     private const float FLATNESS_CHECK_RADIUS = 15f; // Радиус проверки ровности (метры)
     private const int FLATNESS_CHECK_POINTS = 8; // Количество точек для проверки ровности
-    private const float OBSTACLE_CHECK_HEIGHT = 50f; // Высота проверки препятствий (метры)
+    private const float OBSTACLE_CHECK_HEIGHT = 200f; // Высота проверки препятствий (метры)
     private const int MAX_RESULTS = 100; // Максимальное количество площадок (увеличено для отладки)
     private const float MIN_DISTANCE_BETWEEN_SITES = 50f; // Минимальное расстояние между площадками (метры) - увеличено для предотвращения наложения
     private const int MAX_POINTS_PER_FRAME = 30; // Максимальное количество точек за кадр (уменьшено для предотвращения зависаний)
+    private const int OBSTACLE_OVERLAP_BUFFER_SIZE = 256;
+    private const int OBSTACLE_BROADPHASE_BUFFER_SIZE = 2048;
     
     // Внутренние переменные
     private List<LandingSite> foundSites = new List<LandingSite>();
+    private Collider[] obstacleOverlapBuffer = new Collider[OBSTACLE_OVERLAP_BUFFER_SIZE];
+    private Collider[] obstacleBroadphaseBuffer = new Collider[OBSTACLE_BROADPHASE_BUFFER_SIZE];
+    private System.Random poissonRng = new System.Random();
     
     /// <summary>
     /// Получает список найденных площадок
@@ -99,6 +120,77 @@ public class LandingRadar : MonoBehaviour
                 Debug.Log($"LandingRadar: Используется назначенный корабль: {shipTransform.name}");
             }
         }
+        
+        if (showDebugInfo)
+        {
+            Debug.Log($"LandingRadar: obstacleMask={obstacleMask.value}, earlyReject={earlyRejectObstacles}, useObstacleGrid={useObstacleGridSampling}, usePoisson={usePoissonSampling}");
+        }
+    }
+    
+    private bool TryGetObstaclesNonAlloc(Vector3 start, Vector3 end, float radius, out int count)
+    {
+        count = Physics.OverlapCapsuleNonAlloc(
+            start,
+            end,
+            radius,
+            obstacleOverlapBuffer,
+            obstacleMask,
+            QueryTriggerInteraction.Ignore
+        );
+        if (showDebugInfo && Time.frameCount % 120 == 0)
+        {
+            Debug.Log($"LandingRadar: OverlapCapsuleNonAlloc count={count}, radius={radius:F1}");
+        }
+        return count > 0;
+    }
+    
+    private bool IsValidObstacle(Collider col, float groundHeight)
+    {
+        if (col == null) return false;
+        // Исключаем корабль
+        if (shipTransform != null && (col.transform == shipTransform || col.transform.IsChildOf(shipTransform)))
+        {
+            return false;
+        }
+        if (excludeGroundByName)
+        {
+            string lowerName = col.name.ToLowerInvariant();
+            for (int i = 0; i < excludedObstacleNameKeywords.Length; i++)
+            {
+                if (lowerName.Contains(excludedObstacleNameKeywords[i]))
+                {
+                    if (showObstacleDebug)
+                    {
+                        Debug.Log($"LandingRadar: Obstacle '{col.name}' ignored (name filter).");
+                    }
+                    return false;
+                }
+            }
+        }
+        if (maxObstacleFootprint > 0f)
+        {
+            Vector3 size = col.bounds.size;
+            if (size.x > maxObstacleFootprint && size.z > maxObstacleFootprint)
+            {
+                if (showObstacleDebug)
+                {
+                    Debug.Log($"LandingRadar: Obstacle '{col.name}' ignored (too large).");
+                }
+                return false;
+            }
+        }
+        // Препятствие должно быть выше земли
+        float obstacleHeight = col.bounds.max.y;
+        float heightAboveGround = obstacleHeight - groundHeight;
+        if (heightAboveGround <= 0.5f || heightAboveGround > OBSTACLE_CHECK_HEIGHT)
+        {
+            if (showObstacleDebug)
+            {
+                Debug.Log($"LandingRadar: Obstacle '{col.name}' ignored (height out of range, aboveGround={heightAboveGround:F1}).");
+            }
+            return false;
+        }
+        return true;
     }
     
     private void Update()
@@ -170,10 +262,133 @@ public class LandingRadar : MonoBehaviour
         scanPoints.Clear();
         foundSites.Clear();
         
-        // Создаем список точек с расстоянием от корабля для сортировки
-        List<(Vector2 point, float distance)> pointsWithDistance = new List<(Vector2, float)>();
+        List<Vector2> points;
+        if (useObstacleGridSampling)
+        {
+            points = GenerateObstacleGridPoints(shipPositionGround, scanRadius, Mathf.Max(1f, gridResolution));
+        }
+        else if (usePoissonSampling)
+        {
+            points = GeneratePoissonPoints(shipPositionGround, scanRadius, Mathf.Max(1f, gridResolution), 30);
+        }
+        else
+        {
+            points = GenerateGridPoints(shipPositionGround, scanRadius, gridResolution);
+        }
         
-        int gridSize = Mathf.CeilToInt((scanRadius * 2f) / gridResolution);
+        // Сортируем по расстоянию - сначала ближайшие точки (прямо под кораблем)
+        scanPoints = points
+            .OrderBy(p => Vector2.Distance(p, new Vector2(shipPositionGround.x, shipPositionGround.z)))
+            .ToList();
+        
+        if (showDebugInfo)
+        {
+            string mode = useObstacleGridSampling ? "ObstacleGrid" : (usePoissonSampling ? "Poisson" : "Grid");
+            Debug.Log($"LandingRadar: Начато сканирование {scanPoints.Count} точек ({mode}) под кораблем (радиус: {scanRadius}м, шаг: {gridResolution}м). Приоритет: ближайшие точки");
+        }
+    }
+    
+    private List<Vector2> GenerateObstacleGridPoints(Vector3 center, float radius, float step)
+    {
+        List<Vector2> points = new List<Vector2>();
+        if (step <= 0f) return points;
+        
+        float clearance = Mathf.Max(0.1f, obstacleClearanceRadius);
+        float searchRadius = radius + clearance;
+        Vector3 broadphaseCenter = new Vector3(center.x, center.y, center.z);
+        int obstacleCount = Physics.OverlapSphereNonAlloc(
+            broadphaseCenter,
+            searchRadius,
+            obstacleBroadphaseBuffer,
+            obstacleMask,
+            QueryTriggerInteraction.Ignore
+        );
+        
+        if (showDebugInfo)
+        {
+            Debug.Log($"LandingRadar: ObstacleGrid broadphase count={obstacleCount}, searchRadius={searchRadius:F1}, clearance={clearance:F1}");
+        }
+        if (showObstacleDebug)
+        {
+            if (obstacleCount == 0)
+            {
+                Debug.Log("LandingRadar: ObstacleGrid broadphase found 0 obstacles.");
+            }
+            else
+            {
+                int logCount = Mathf.Min(obstacleCount, 5);
+                for (int i = 0; i < logCount; i++)
+                {
+                    Collider col = obstacleBroadphaseBuffer[i];
+                    if (col == null) continue;
+                    Debug.Log($"LandingRadar: Broadphase obstacle '{col.name}' layer={LayerMask.LayerToName(col.gameObject.layer)} bounds={col.bounds}");
+                }
+            }
+        }
+        
+        int gridSize = Mathf.CeilToInt((radius * 2f) / step);
+        int centerX = gridSize / 2;
+        int centerZ = gridSize / 2;
+        bool[] blocked = new bool[gridSize * gridSize];
+        
+        float minX = center.x - radius;
+        float minZ = center.z - radius;
+        
+        for (int i = 0; i < obstacleCount; i++)
+        {
+            Collider col = obstacleBroadphaseBuffer[i];
+            if (col == null) continue;
+            float groundHeight = HillGenerator.GetHeightAtPosition(new Vector3(col.bounds.center.x, 0f, col.bounds.center.z));
+            if (!IsValidObstacle(col, groundHeight)) continue;
+            
+            Bounds b = col.bounds;
+            float inflate = Mathf.Min(clearance, step * 1.5f);
+            float minBx = b.min.x - inflate;
+            float maxBx = b.max.x + inflate;
+            float minBz = b.min.z - inflate;
+            float maxBz = b.max.z + inflate;
+            
+            int startX = Mathf.Clamp(Mathf.FloorToInt((minBx - minX) / step), 0, gridSize - 1);
+            int endX = Mathf.Clamp(Mathf.FloorToInt((maxBx - minX) / step), 0, gridSize - 1);
+            int startZ = Mathf.Clamp(Mathf.FloorToInt((minBz - minZ) / step), 0, gridSize - 1);
+            int endZ = Mathf.Clamp(Mathf.FloorToInt((maxBz - minZ) / step), 0, gridSize - 1);
+            
+            for (int x = startX; x <= endX; x++)
+            {
+                for (int z = startZ; z <= endZ; z++)
+                {
+                    blocked[x + z * gridSize] = true;
+                }
+            }
+        }
+        
+        for (int x = 0; x < gridSize; x++)
+        {
+            for (int z = 0; z < gridSize; z++)
+            {
+                if (blocked[x + z * gridSize]) continue;
+                
+                float worldX = center.x + (x - centerX) * step;
+                float worldZ = center.z + (z - centerZ) * step;
+                
+                float distanceFromCenter = Vector2.Distance(
+                    new Vector2(worldX, worldZ),
+                    new Vector2(center.x, center.z)
+                );
+                if (distanceFromCenter <= radius)
+                {
+                    points.Add(new Vector2(worldX, worldZ));
+                }
+            }
+        }
+        
+        return points;
+    }
+    
+    private List<Vector2> GenerateGridPoints(Vector3 center, float radius, float step)
+    {
+        List<Vector2> points = new List<Vector2>();
+        int gridSize = Mathf.CeilToInt((radius * 2f) / step);
         int centerX = gridSize / 2;
         int centerZ = gridSize / 2;
         
@@ -181,31 +396,104 @@ public class LandingRadar : MonoBehaviour
         {
             for (int z = 0; z < gridSize; z++)
             {
-                float worldX = shipPositionGround.x + (x - centerX) * gridResolution;
-                float worldZ = shipPositionGround.z + (z - centerZ) * gridResolution;
+                float worldX = center.x + (x - centerX) * step;
+                float worldZ = center.z + (z - centerZ) * step;
                 
-                float distanceFromShip = Vector2.Distance(
+                float distanceFromCenter = Vector2.Distance(
                     new Vector2(worldX, worldZ),
-                    new Vector2(shipPositionGround.x, shipPositionGround.z)
+                    new Vector2(center.x, center.z)
                 );
                 
-                if (distanceFromShip <= scanRadius)
+                if (distanceFromCenter <= radius)
                 {
-                    pointsWithDistance.Add((new Vector2(worldX, worldZ), distanceFromShip));
+                    points.Add(new Vector2(worldX, worldZ));
                 }
             }
         }
         
-        // Сортируем по расстоянию - сначала ближайшие точки (прямо под кораблем)
-        pointsWithDistance.Sort((a, b) => a.distance.CompareTo(b.distance));
+        return points;
+    }
+    
+    private List<Vector2> GeneratePoissonPoints(Vector3 center, float radius, float minDistance, int attemptsPerPoint)
+    {
+        List<Vector2> points = new List<Vector2>();
+        if (minDistance <= 0f) return points;
         
-        // Сохраняем только точки (без расстояния)
-        scanPoints = pointsWithDistance.Select(p => p.point).ToList();
+        Vector2 center2D = new Vector2(center.x, center.z);
+        Vector2 initial = center2D;
+        points.Add(initial);
+        List<Vector2> active = new List<Vector2> { initial };
         
-        if (showDebugInfo)
+        float cellSize = minDistance / Mathf.Sqrt(2f);
+        int gridSize = Mathf.CeilToInt((radius * 2f) / cellSize);
+        int gridWidth = gridSize;
+        int gridHeight = gridSize;
+        Vector2?[] grid = new Vector2?[gridWidth * gridHeight];
+        
+        int cx = Mathf.FloorToInt((initial.x - (center2D.x - radius)) / cellSize);
+        int cz = Mathf.FloorToInt((initial.y - (center2D.y - radius)) / cellSize);
+        grid[cx + cz * gridWidth] = initial;
+        
+        while (active.Count > 0)
         {
-            Debug.Log($"LandingRadar: Начато сканирование {scanPoints.Count} точек под кораблем (радиус: {scanRadius}м, разрешение: {gridResolution}м). Приоритет: ближайшие точки");
+            int index = poissonRng.Next(active.Count);
+            Vector2 point = active[index];
+            bool found = false;
+            
+            for (int i = 0; i < attemptsPerPoint; i++)
+            {
+                float angle = (float)poissonRng.NextDouble() * Mathf.PI * 2f;
+                float distance = minDistance * (1f + (float)poissonRng.NextDouble());
+                Vector2 candidate = point + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * distance;
+                
+                if (Vector2.Distance(candidate, center2D) > radius)
+                {
+                    continue;
+                }
+                
+                int gx = Mathf.FloorToInt((candidate.x - (center2D.x - radius)) / cellSize);
+                int gz = Mathf.FloorToInt((candidate.y - (center2D.y - radius)) / cellSize);
+                
+                if (gx < 0 || gz < 0 || gx >= gridWidth || gz >= gridHeight)
+                {
+                    continue;
+                }
+                
+                bool ok = true;
+                int minX = Mathf.Max(gx - 2, 0);
+                int maxX = Mathf.Min(gx + 2, gridWidth - 1);
+                int minZ = Mathf.Max(gz - 2, 0);
+                int maxZ = Mathf.Min(gz + 2, gridHeight - 1);
+                
+                for (int x = minX; x <= maxX && ok; x++)
+                {
+                    for (int z = minZ; z <= maxZ; z++)
+                    {
+                        Vector2? neighbor = grid[x + z * gridWidth];
+                        if (neighbor.HasValue && Vector2.Distance(candidate, neighbor.Value) < minDistance)
+                        {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!ok) continue;
+                
+                points.Add(candidate);
+                active.Add(candidate);
+                grid[gx + gz * gridWidth] = candidate;
+                found = true;
+                break;
+            }
+            
+            if (!found)
+            {
+                active.RemoveAt(index);
+            }
         }
+        
+        return points;
     }
     
     /// <summary>
@@ -300,6 +588,19 @@ public class LandingRadar : MonoBehaviour
             if (site != null)
             {
                 foundSites.Add(site);
+                
+                if (groupSitesDuringScan && foundSites.Count >= groupSitesEvery && (foundSites.Count % groupSitesEvery == 0))
+                {
+                    foundSites = GroupNearbySites(foundSites);
+                    if (foundSites.Count > maxSitesDuringScan)
+                    {
+                        foundSites = foundSites
+                            .OrderByDescending(s => s.suitabilityScore)
+                            .ThenBy(s => s.distanceFromShip)
+                            .Take(maxSitesDuringScan)
+                            .ToList();
+                    }
+                }
             }
             
             currentScanIndex++;
@@ -520,6 +821,38 @@ public class LandingRadar : MonoBehaviour
     {
         rejectionReason = "";
         
+        if (earlyRejectObstacles)
+        {
+            float centerGroundHeight = HillGenerator.GetHeightAtPosition(position);
+            float bottom = centerGroundHeight;
+            float top = centerGroundHeight + OBSTACLE_CHECK_HEIGHT;
+            float quickRadius = MIN_LANDING_SITE_SIZE * 0.5f;
+            if (TryGetObstaclesNonAlloc(
+                    new Vector3(position.x, bottom, position.z),
+                    new Vector3(position.x, top, position.z),
+                    quickRadius,
+                    out int count))
+            {
+                if (showDebugInfo && Time.frameCount % 120 == 0)
+                {
+                    Debug.Log($"LandingRadar: EarlyReject check count={count}, pos=({position.x:F1},{position.y:F1},{position.z:F1})");
+                }
+                for (int i = 0; i < count; i++)
+                {
+                    Collider col = obstacleOverlapBuffer[i];
+                    if (IsValidObstacle(col, centerGroundHeight))
+                    {
+                        if (showDebugInfo)
+                        {
+                            Debug.Log($"LandingRadar: EarlyReject obstacle={col.name}");
+                        }
+                        rejectionReason = "Препятствие рядом (быстрый отсев)";
+                        return null;
+                    }
+                }
+            }
+        }
+        
         // Проверяем ровность
         float flatness = CheckFlatness(position);
         if (flatness > MAX_FLATNESS_DEVIATION)
@@ -736,38 +1069,19 @@ public class LandingRadar : MonoBehaviour
                 float top = groundHeight + OBSTACLE_CHECK_HEIGHT;
                 // Увеличиваем радиус проверки до 5м, чтобы покрыть промежутки между точками
                 float checkRadius = Mathf.Max(5f, radius * 0.1f); // Минимум 5м или 10% радиуса
-                Collider[] obstacles = Physics.OverlapCapsule(
+                TryGetObstaclesNonAlloc(
                     new Vector3(checkPos.x, bottom, checkPos.z),
                     new Vector3(checkPos.x, top, checkPos.z),
-                    checkRadius
+                    checkRadius,
+                    out int obstacleCount
                 );
                 
                 // Фильтруем препятствия
-                foreach (Collider col in obstacles)
+                for (int o = 0; o < obstacleCount; o++)
                 {
+                    Collider col = obstacleOverlapBuffer[o];
                     // Исключаем корабль
-                    if (shipTransform != null && 
-                        (col.transform == shipTransform || col.transform.IsChildOf(shipTransform)))
-                    {
-                        continue;
-                    }
-                    
-                    // Исключаем триггеры
-                    if (col.isTrigger)
-                    {
-                        continue;
-                    }
-                    
-                    // Исключаем препятствия под землей
-                    float obstacleBottom = col.bounds.min.y;
-                    if (obstacleBottom < groundHeight - 1f)
-                    {
-                        continue;
-                    }
-                    
-                    // Препятствие должно быть выше земли (деревья, камни и т.д.)
-                    float obstacleHeight = col.bounds.max.y;
-                    if (obstacleHeight > groundHeight + 0.5f && obstacleHeight <= groundHeight + OBSTACLE_CHECK_HEIGHT)
+                    if (IsValidObstacle(col, groundHeight))
                     {
                         // Найдено препятствие на этом радиусе
                         hasObstaclesAtRadius = true;
@@ -792,24 +1106,19 @@ public class LandingRadar : MonoBehaviour
             float centerGroundHeight = HillGenerator.GetHeightAtPosition(center);
             float circleBottom = centerGroundHeight;
             float circleTop = centerGroundHeight + OBSTACLE_CHECK_HEIGHT;
-            Collider[] allObstaclesInCircle = Physics.OverlapCapsule(
+            TryGetObstaclesNonAlloc(
                 new Vector3(center.x, circleBottom, center.z),
                 new Vector3(center.x, circleTop, center.z),
-                radius * 0.95f // Проверяем 95% радиуса
+                radius * 0.95f, // Проверяем 95% радиуса
+                out int circleObstacleCount
             );
             
             // Фильтруем препятствия в круге
-            foreach (Collider col in allObstaclesInCircle)
+            for (int o = 0; o < circleObstacleCount; o++)
             {
+                Collider col = obstacleOverlapBuffer[o];
                 // Исключаем корабль
-                if (shipTransform != null && 
-                    (col.transform == shipTransform || col.transform.IsChildOf(shipTransform)))
-                {
-                    continue;
-                }
-                
-                // Исключаем триггеры
-                if (col.isTrigger)
+                if (!IsValidObstacle(col, centerGroundHeight))
                 {
                     continue;
                 }
@@ -831,21 +1140,9 @@ public class LandingRadar : MonoBehaviour
                 // Получаем высоту земли под препятствием
                 float obstacleGroundHeight = HillGenerator.GetHeightAtPosition(obstaclePos);
                 
-                // Исключаем препятствия под землей
-                float obstacleBottom = col.bounds.min.y;
-                if (obstacleBottom < obstacleGroundHeight - 1f)
-                {
-                    continue;
-                }
-                
-                // Препятствие должно быть выше земли (деревья, камни и т.д.)
-                float obstacleHeight = col.bounds.max.y;
-                if (obstacleHeight > obstacleGroundHeight + 0.5f && obstacleHeight <= obstacleGroundHeight + OBSTACLE_CHECK_HEIGHT)
-                {
-                    // Найдено препятствие внутри круга
-                    hasObstaclesAtRadius = true;
-                    break;
-                }
+                // Найдено препятствие внутри круга
+                hasObstaclesAtRadius = true;
+                break;
             }
             
             // Если найдены препятствия в круге, не можем расширить дальше
@@ -893,29 +1190,24 @@ public class LandingRadar : MonoBehaviour
         float top = centerGroundHeight + OBSTACLE_CHECK_HEIGHT;
         
         // Используем OverlapCapsule для проверки всей цилиндрической области площадки
-        Collider[] allObstacles = Physics.OverlapCapsule(
+        TryGetObstaclesNonAlloc(
             new Vector3(position.x, bottom, position.z),
             new Vector3(position.x, top, position.z),
-            checkRadius
+            checkRadius,
+            out int obstacleCount
         );
         
-        if (allObstacles.Length == 0)
+        if (obstacleCount == 0)
         {
             return false; // Нет препятствий
         }
         
         // Фильтруем препятствия
-        foreach (Collider col in allObstacles)
+        for (int o = 0; o < obstacleCount; o++)
         {
+            Collider col = obstacleOverlapBuffer[o];
             // Исключаем корабль
-            if (shipTransform != null && 
-                (col.transform == shipTransform || col.transform.IsChildOf(shipTransform)))
-            {
-                continue;
-            }
-            
-            // Исключаем триггеры
-            if (col.isTrigger)
+            if (!IsValidObstacle(col, centerGroundHeight))
             {
                 continue;
             }
@@ -937,24 +1229,12 @@ public class LandingRadar : MonoBehaviour
             // Получаем высоту земли под препятствием
             float obstacleGroundHeight = HillGenerator.GetHeightAtPosition(obstaclePos);
             
-            // Исключаем препятствия под землей
-            float obstacleBottom = col.bounds.min.y;
-            if (obstacleBottom < obstacleGroundHeight - 1f)
+            // Найдено препятствие внутри площадки
+            if (showDebugInfo)
             {
-                continue;
+                Debug.LogWarning($"LandingRadar: Найдено препятствие внутри площадки! Позиция: {obstaclePos}, Расстояние от центра: {distanceFromCenter:F1}м, Размер площадки: {siteSize:F1}м");
             }
-            
-            // Препятствие должно быть выше земли (деревья, камни и т.д.)
-            float obstacleHeight = col.bounds.max.y;
-            if (obstacleHeight > obstacleGroundHeight + 0.5f && obstacleHeight <= obstacleGroundHeight + OBSTACLE_CHECK_HEIGHT)
-            {
-                // Найдено препятствие внутри площадки
-                if (showDebugInfo)
-                {
-                    Debug.LogWarning($"LandingRadar: Найдено препятствие внутри площадки! Позиция: {obstaclePos}, Расстояние от центра: {distanceFromCenter:F1}м, Размер площадки: {siteSize:F1}м");
-                }
-                return true;
-            }
+            return true;
         }
         
         return false; // Нет препятствий внутри
@@ -969,53 +1249,28 @@ public class LandingRadar : MonoBehaviour
         // Проверяем от земли до высоты препятствий
         float bottom = position.y;
         float top = position.y + OBSTACLE_CHECK_HEIGHT;
-        Collider[] obstacles = Physics.OverlapCapsule(
+        TryGetObstaclesNonAlloc(
             new Vector3(position.x, bottom, position.z),
             new Vector3(position.x, top, position.z),
-            checkRadius
+            checkRadius,
+            out int obstacleCount
         );
         
-        if (obstacles.Length == 0)
+        if (obstacleCount == 0)
         {
             return checkRadius * 2f; // Нет препятствий
         }
         
         // Фильтруем препятствия: исключаем корабль и триггеры
         List<Collider> validObstacles = new List<Collider>();
-        foreach (Collider col in obstacles)
+        for (int o = 0; o < obstacleCount; o++)
         {
+            Collider col = obstacleOverlapBuffer[o];
             // Исключаем корабль
-            if (shipTransform != null && 
-                (col.transform == shipTransform || col.transform.IsChildOf(shipTransform)))
-            {
-                continue;
-            }
-            
-            // Исключаем триггеры
-            if (col.isTrigger)
-            {
-                continue;
-            }
-            
-            // Исключаем препятствия, которые находятся ниже земли (под землей)
-            float obstacleBottom = col.bounds.min.y;
             float groundHeight = position.y;
-            if (obstacleBottom < groundHeight - 1f)
+            if (!IsValidObstacle(col, groundHeight))
             {
-                continue; // Препятствие под землей
-            }
-            
-            // Проверяем высоту препятствия - должно быть выше земли
-            float obstacleHeight = col.bounds.max.y;
-            if (obstacleHeight <= groundHeight + 0.5f)
-            {
-                continue; // Препятствие на уровне земли или ниже (возможно, это сама земля)
-            }
-            
-            // Препятствие должно быть не слишком высоко
-            if (obstacleHeight > groundHeight + OBSTACLE_CHECK_HEIGHT)
-            {
-                continue; // Препятствие слишком высоко
+                continue;
             }
             
             validObstacles.Add(col);

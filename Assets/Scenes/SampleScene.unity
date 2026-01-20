@@ -5485,6 +5485,8 @@ MonoBehaviour:
   stabilizationStrength: 10
   applyForceToCenter: 0
   showDebugInfo: 0
+  showAutopilotTorqueDebug: 1
+  autopilotTorqueDebugFrameInterval: 30
   thrusterManager: {fileID: 76457402}
   cloudManager: {fileID: 0}
   turbulenceManager: {fileID: 0}
@@ -5575,34 +5577,92 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 76457400}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8cb5177b6677c4be0b94a6cdb887530b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   shipController: {fileID: 0}
   landingRadar: {fileID: 0}
-  maxDistanceToSite: 500
-  preferSitesUnderShip: 1
+  maxFallSpeed: 10
+  brakingStartHeight: 300
+  brakingSpeed: 3
+  slowFallHeight: 100
+  slowFallSpeed: 3
+  finalLandingSpeed: 3
   approachSpeed: 10
-  descentSpeed: 3
-  landingHeight: 2
+  brakingDistance: 100
   landingSpeed: 0.5
-  heightPID:
-    kp: 1
-    ki: 0
-    kd: 0.1
+  orientationSmoothing: 5
+  maxOrientationAngle: 5
+  alignmentStartHeight: 150
+  useDirectTorqueStabilization: 0
+  directTorqueStrength: 2000
+  directTorqueDamping: 200
+  useGeometryThrustStabilization: 1
+  geometryTorqueStrength: 6000
+  geometryTorqueDamping: 700
+  maxGeometryThrustDelta: 0.5
+  thrustChangeRate: 0.15
+  rotationStabilizationStrength: 0.3
+  verticalSpeedPID:
+    kp: 0.5
+    ki: 0.05
+    kd: 0.2
     minOutput: -1
     maxOutput: 1
     integralLimit: 10
-  horizontalPID:
-    kp: 1
-    ki: 0
-    kd: 0.1
+  horizontalSpeedPIDX:
+    kp: 0.3
+    ki: 0.02
+    kd: 0.15
     minOutput: -1
     maxOutput: 1
     integralLimit: 10
-  showDebugInfo: 1
+  horizontalSpeedPIDZ:
+    kp: 0.3
+    ki: 0.02
+    kd: 0.15
+    minOutput: -1
+    maxOutput: 1
+    integralLimit: 10
+  orientationPID:
+    kp: 2
+    ki: 0.1
+    kd: 0.5
+    minOutput: -1
+    maxOutput: 1
+    integralLimit: 10
+  rollStabilizationPID:
+    kp: 1.5
+    ki: 0.05
+    kd: 0.3
+    minOutput: -1
+    maxOutput: 1
+    integralLimit: 10
+  yawStabilizationPID:
+    kp: 1.5
+    ki: 0.05
+    kd: 0.3
+    minOutput: -1
+    maxOutput: 1
+    integralLimit: 10
+  pitchStabilizationPID:
+    kp: 1.5
+    ki: 0.05
+    kd: 0.3
+    minOutput: -1
+    maxOutput: 1
+    integralLimit: 10
+  showDebugInfo: 0
+  showRotationDebug: 1
+  rotationDebugFrameInterval: 30
+  invertRotationCorrection: 1
+  swapRollPitchAxes: 0
+  dampMovementWhenUnstable: 0
+  pauseMovementAboveAngle: 6
+  resumeMovementBelowAngle: 3
+  minMovementScaleWhenUnstable: 0.2
 --- !u!1 &87495455
 GameObject:
   m_ObjectHideFlags: 0
