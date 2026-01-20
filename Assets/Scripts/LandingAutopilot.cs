@@ -24,6 +24,11 @@ public class LandingAutopilot : MonoBehaviour
     [SerializeField] private float maxOrientationAngle = 5f; // Максимальный угол отклонения для посадки (градусы)
     [SerializeField] private float alignmentStartHeight = 150f; // Высота, с которой начинаем выравнивание по нормали поверхности (м)
     
+    [Header("Direct Torque Stabilization")]
+    [SerializeField] private bool useDirectTorqueStabilization = false;
+    [SerializeField] private float directTorqueStrength = 2000f;
+    [SerializeField] private float directTorqueDamping = 200f;
+    
     [Header("Thrust Smoothing")]
     [SerializeField] private float thrustChangeRate = 2f; // Максимальная скорость изменения тяги (в секунду, 0-1)
     [SerializeField] private float rotationStabilizationStrength = 1.0f; // Сила стабилизации rotation через дифференциальную тягу (0-1) - установлено в 1.0 для максимальной эффективности выравнивания к (0,0,0)
@@ -39,6 +44,16 @@ public class LandingAutopilot : MonoBehaviour
     
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = true;
+    [SerializeField] private bool showRotationDebug = false;
+    [SerializeField] private int rotationDebugFrameInterval = 30;
+    [SerializeField] private bool invertRotationCorrection = false;
+    [SerializeField] private bool swapRollPitchAxes = false;
+    
+    [Header("Rotation vs Movement")]
+    [SerializeField] private bool dampMovementWhenUnstable = true;
+    [SerializeField] private float pauseMovementAboveAngle = 6f;
+    [SerializeField] private float resumeMovementBelowAngle = 3f;
+    [SerializeField] private float minMovementScaleWhenUnstable = 0.2f;
     
     // Фазы посадки
     public enum LandingPhase
@@ -59,6 +74,8 @@ public class LandingAutopilot : MonoBehaviour
     private float currentThrust = 0f; // Текущая тяга (для плавного изменения)
     private float[] currentEngineThrusts = new float[4]; // Текущая тяга каждого двигателя (для плавного изменения)
     private bool isAligningToSurface = false; // Флаг, что идет выравнивание по нормали поверхности
+    private bool movementPausedForRotation = false;
+    private float movementDampingFactor = 1f;
     
     // События
     public delegate void AutopilotStateChangedDelegate(bool isActive);
@@ -160,6 +177,10 @@ public class LandingAutopilot : MonoBehaviour
     private void Update()
     {
         if (!isActive) return;
+        rotationDebugFrameInterval = Mathf.Max(1, rotationDebugFrameInterval);
+        pauseMovementAboveAngle = Mathf.Max(0.1f, pauseMovementAboveAngle);
+        resumeMovementBelowAngle = Mathf.Clamp(resumeMovementBelowAngle, 0.05f, pauseMovementAboveAngle);
+        minMovementScaleWhenUnstable = Mathf.Clamp01(minMovementScaleWhenUnstable);
         
         // Обновляем автопилот в зависимости от текущей фазы
         // (ControlFallSpeed обновит currentThrust)
@@ -493,6 +514,7 @@ public class LandingAutopilot : MonoBehaviour
         // Управление: контроль скорости падения + движение к цели
         ControlFallSpeed();
         MoveTowardsTarget(targetPosition, approachSpeed);
+        ApplyMovementPauseIfNeeded();
         
         // Выравнивание по нормали поверхности, если близко к земле (с высоты alignmentStartHeight)
         // Вызываем ПОСЛЕ MoveTowardsTarget, чтобы коррекции выравнивания добавлялись к направлению движения
@@ -559,6 +581,7 @@ public class LandingAutopilot : MonoBehaviour
         // НЕ передаем параметр, чтобы использовалась правильная скорость на основе высоты (10 м/с на 300м, плавно до 5 м/с на 100м)
         ControlFallSpeed();
         MoveTowardsTarget(targetPosition, brakingSpeed);
+        ApplyMovementPauseIfNeeded();
         
         // ВРЕМЕННО: Стабилизация rotation к вертикали (0, 0, 0), игнорируя нормаль поверхности
         StabilizeRotation(Vector3.up);
@@ -606,6 +629,7 @@ public class LandingAutopilot : MonoBehaviour
         // Управление: очень медленное движение к цели
         ControlFallSpeed(landingSpeed);
         MoveTowardsTarget(targetPosition, landingSpeed);
+        ApplyMovementPauseIfNeeded();
         
         // ВРЕМЕННО: Стабилизация rotation к вертикали (0, 0, 0), игнорируя нормаль поверхности
         StabilizeRotation(Vector3.up);
@@ -1380,6 +1404,15 @@ public class LandingAutopilot : MonoBehaviour
         Vector3 currentUp = shipTransform.up;
         float orientationError = Vector3.Angle(currentUp, desiredUp);
         
+        // Прямое стабилизирующее torque (без дифференциальной тяги)
+        if (useDirectTorqueStabilization)
+        {
+            Vector3 correctionAxis = Vector3.Cross(currentUp, desiredUp);
+            Vector3 torque = correctionAxis * directTorqueStrength - angularVelocity * directTorqueDamping;
+            shipController.ApplyAutopilotTorque(torque);
+            return;
+        }
+        
         // Вычисляем желаемую угловую скорость для выравнивания (пропорционально ошибке ориентации)
         // Если корабль наклонен, нужно его выровнять
         // Увеличены коэффициенты для более агрессивного и эффективного выравнивания к (0, 0, 0)
@@ -1400,6 +1433,10 @@ public class LandingAutopilot : MonoBehaviour
         }
         
         Vector3 desiredAngularVelocity = Vector3.Cross(currentUp, desiredUp).normalized * orientationCorrectionSpeed;
+        if (invertRotationCorrection)
+        {
+            desiredAngularVelocity = -desiredAngularVelocity;
+        }
         Vector3 localDesiredAngularVelocity = shipTransform.InverseTransformDirection(desiredAngularVelocity);
         
         // Комбинируем компенсацию угловой скорости И ориентации
@@ -1442,9 +1479,21 @@ public class LandingAutopilot : MonoBehaviour
         
         // Используем отдельные PID для каждой оси rotation
         // Цель: достичь targetAngularVelocity (компенсировать текущую скорость + выровнять ориентацию)
-        float rollCorrection = rollStabilizationPID.Update(targetAngularVelocity.x, localAngularVelocity.x, Time.deltaTime);
+        float rollTarget = targetAngularVelocity.x;
+        float rollCurrent = localAngularVelocity.x;
+        float pitchTarget = targetAngularVelocity.z;
+        float pitchCurrent = localAngularVelocity.z;
+        if (swapRollPitchAxes)
+        {
+            rollTarget = targetAngularVelocity.z;
+            rollCurrent = localAngularVelocity.z;
+            pitchTarget = targetAngularVelocity.x;
+            pitchCurrent = localAngularVelocity.x;
+        }
+        
+        float rollCorrection = rollStabilizationPID.Update(rollTarget, rollCurrent, Time.deltaTime);
         float yawCorrection = yawStabilizationPID.Update(targetAngularVelocity.y, localAngularVelocity.y, Time.deltaTime);
-        float pitchCorrection = pitchStabilizationPID.Update(targetAngularVelocity.z, localAngularVelocity.z, Time.deltaTime);
+        float pitchCorrection = pitchStabilizationPID.Update(pitchTarget, pitchCurrent, Time.deltaTime);
         
         // ВАЖНО: Получаем текущую базовую тягу ДО применения коррекций, чтобы ограничить их
         float baseThrustForCorrection = currentThrust;
@@ -1660,9 +1709,50 @@ public class LandingAutopilot : MonoBehaviour
             shipController.SetMovementDirection(movementDirection);
         }
         
-        if (showDebugInfo && Time.frameCount % 60 == 0 && (Mathf.Abs(rollCorrection) > 0.01f || Mathf.Abs(yawCorrection) > 0.01f || Mathf.Abs(pitchCorrection) > 0.01f))
+        if (showRotationDebug && Time.frameCount % rotationDebugFrameInterval == 0)
         {
-            Debug.Log($"StabilizeRotation: roll={rollCorrection:F3}, yaw={yawCorrection:F3}, pitch={pitchCorrection:F3}, angularVel={localAngularVelocity}");
+            Debug.Log(
+                $"Autopilot Rotation: phase={currentPhase}, " +
+                $"upErr={orientationError:F2}°, " +
+                $"angVel(local)={localAngularVelocity.x:F3},{localAngularVelocity.y:F3},{localAngularVelocity.z:F3}, " +
+                $"corr={rollCorrection:F3},{yawCorrection:F3},{pitchCorrection:F3}, " +
+                $"invert={invertRotationCorrection}, swapRP={swapRollPitchAxes}, pauseMove={movementPausedForRotation}, moveScale={movementDampingFactor:F2}"
+            );
+        }
+    }
+    
+    private void ApplyMovementPauseIfNeeded()
+    {
+        if (!dampMovementWhenUnstable)
+        {
+            movementPausedForRotation = false;
+            movementDampingFactor = 1f;
+            return;
+        }
+        
+        Transform shipTransform = shipController.transform;
+        float upError = Vector3.Angle(shipTransform.up, Vector3.up);
+        
+        if (upError >= pauseMovementAboveAngle)
+        {
+            movementDampingFactor = minMovementScaleWhenUnstable;
+        }
+        else if (upError <= resumeMovementBelowAngle)
+        {
+            movementDampingFactor = 1f;
+        }
+        else
+        {
+            float t = Mathf.InverseLerp(pauseMovementAboveAngle, resumeMovementBelowAngle, upError);
+            movementDampingFactor = Mathf.Lerp(minMovementScaleWhenUnstable, 1f, t);
+        }
+        
+        movementPausedForRotation = movementDampingFactor <= 0.01f;
+        
+        Vector2 currentMovement = shipController.GetMovementDirection();
+        if (currentMovement.sqrMagnitude > 0f && movementDampingFactor < 0.999f)
+        {
+            shipController.SetMovementDirection(currentMovement * movementDampingFactor);
         }
     }
     

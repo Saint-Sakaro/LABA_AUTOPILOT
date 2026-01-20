@@ -102,6 +102,8 @@ public class ShipController : MonoBehaviour
 
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
+    [SerializeField] private bool showAutopilotTorqueDebug = false;
+    [SerializeField] private int autopilotTorqueDebugFrameInterval = 30;
 
     [Header("References")]
     [SerializeField] private ShipThrusterManager thrusterManager;
@@ -584,6 +586,7 @@ public class ShipController : MonoBehaviour
 
     private void Update()
     {
+        autopilotTorqueDebugFrameInterval = Mathf.Max(1, autopilotTorqueDebugFrameInterval);
 
 
         if (shipRigidbody != null)
@@ -1259,15 +1262,7 @@ public class ShipController : MonoBehaviour
         float movementX = desiredMovementDirection.x;
         float movementY = desiredMovementDirection.y;
         float movementMagnitude = Mathf.Sqrt(movementX * movementX + movementY * movementY);
-        bool enginesTilted = false;
-        if (movementMagnitude > 0.01f)
-        {
-            enginesTilted = true;
-        }
-        else
-        {
-            enginesTilted = false;
-        }
+        bool enginesTilted = movementMagnitude > 0.01f;
 
         for (int i = 0; i < engines.Count; i++)
         {
@@ -1305,18 +1300,10 @@ public class ShipController : MonoBehaviour
                     totalForce.z + force.z
                 );
             }
-            else if (enginesTilted == true)
-            {
-                totalForce = new Vector3(
-                    totalForce.x + force.x,
-                    totalForce.y + force.y,
-                    totalForce.z + force.z
-                );
-            }
             else
             {
                 shipRigidbody.AddForceAtPosition(force, enginePosition, ForceMode.Force);
-
+                
                 Vector3 leverArm = new Vector3(
                     enginePosition.x - centerOfMass.x,
                     enginePosition.y - centerOfMass.y,
@@ -1328,7 +1315,7 @@ public class ShipController : MonoBehaviour
                     totalTorque.y + torque.y,
                     totalTorque.z + torque.z
                 );
-
+                
                 if (showDebugInfo == true)
                 {
                     float leverArmLength = Mathf.Sqrt(leverArm.x * leverArm.x + leverArm.y * leverArm.y + leverArm.z * leverArm.z);
@@ -1339,7 +1326,7 @@ public class ShipController : MonoBehaviour
             }
         }
 
-        if (applyForceToCenter == true || enginesTilted == true)
+        if (applyForceToCenter == true)
         {
             float totalForceLength = Mathf.Sqrt(totalForce.x * totalForce.x + totalForce.y * totalForce.y + totalForce.z * totalForce.z);
             if (totalForceLength > 0.01f)
@@ -1376,18 +1363,15 @@ public class ShipController : MonoBehaviour
             }
         }
 
-        if (showDebugInfo == true)
+        if (showAutopilotTorqueDebug && autopilotActive && Time.frameCount % autopilotTorqueDebugFrameInterval == 0)
         {
             float totalTorqueLength = Mathf.Sqrt(totalTorque.x * totalTorque.x + totalTorque.y * totalTorque.y + totalTorque.z * totalTorque.z);
-            if (totalTorqueLength > 0.1f)
-            {
-                Vector3 normalizedTorque = new Vector3(
-                    totalTorque.x / totalTorqueLength,
-                    totalTorque.y / totalTorqueLength,
-                    totalTorque.z / totalTorqueLength
-                );
-                Debug.Log($"Total Torque: {totalTorqueLength:F1}Nm, Direction: {normalizedTorque}");
-            }
+            Vector3 angularVelocity = shipRigidbody != null ? shipRigidbody.angularVelocity : Vector3.zero;
+            Debug.Log(
+                $"Autopilot Torque: total={totalTorqueLength:F1}Nm, " +
+                $"dir={(totalTorqueLength > 0.1f ? (totalTorque / totalTorqueLength) : Vector3.zero)}, " +
+                $"angVel={angularVelocity.x:F3},{angularVelocity.y:F3},{angularVelocity.z:F3}"
+            );
         }
     }
 
@@ -2715,6 +2699,16 @@ public class ShipController : MonoBehaviour
     {
         if (shipRigidbody == null) return Vector3.zero;
         return shipRigidbody.angularVelocity;
+    }
+
+    /// <summary>
+    /// Применяет момент (torque) от автопилота напрямую к Rigidbody
+    /// </summary>
+    public void ApplyAutopilotTorque(Vector3 torqueWorld)
+    {
+        if (!autopilotActive) return;
+        if (shipRigidbody == null) return;
+        shipRigidbody.AddTorque(torqueWorld, ForceMode.Force);
     }
     
     /// <summary>
