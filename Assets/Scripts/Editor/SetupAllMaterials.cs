@@ -10,7 +10,7 @@ public class SetupAllMaterials
     {
         Debug.Log("=== Начало настройки всех материалов ===");
 
-        // 1. Находим URP Lit шейдер
+        
         Shader urpLitShader = Shader.Find("Universal Render Pipeline/Lit");
         if (urpLitShader == null)
         {
@@ -18,7 +18,7 @@ public class SetupAllMaterials
             return;
         }
 
-        // 2. Находим текстуры для камней
+        
         string[] rockDiffuseGuids = AssetDatabase.FindAssets("rocky_terrain_02_diff_4k t:Texture2D");
         string[] rockNormalGuids = AssetDatabase.FindAssets("rocky_terrain_02_nor_gl_4k");
         string[] rockRoughGuids = AssetDatabase.FindAssets("rocky_terrain_02_rough_4k");
@@ -35,7 +35,7 @@ public class SetupAllMaterials
         Texture2D rockRough = rockRoughGuids.Length > 0 ? 
             AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(rockRoughGuids[0])) : null;
 
-        // 3. Находим текстуры для деревьев
+        
         string[] treeDiffuseGuids = AssetDatabase.FindAssets("diffuse t:Texture2D", new[] { "Assets/Tree_Textures" });
         string[] treeNormalGuids = AssetDatabase.FindAssets("normal_specular t:Texture2D", new[] { "Assets/Tree_Textures" });
 
@@ -49,7 +49,7 @@ public class SetupAllMaterials
         Texture2D treeNormal = treeNormalGuids.Length > 0 ? 
             AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(treeNormalGuids[0])) : null;
 
-        // 4. Создаем/обновляем материал для камней
+        
         Material rockMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/RockMaterial.mat");
         if (rockMaterial == null)
         {
@@ -78,7 +78,7 @@ public class SetupAllMaterials
         rockMaterial.SetFloat("_Metallic", 0.0f);
         EditorUtility.SetDirty(rockMaterial);
 
-        // 5. Создаем/обновляем материалы для деревьев
+        
         Material treeBarkMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TreeBarkMaterial_URP.mat");
         if (treeBarkMaterial == null)
         {
@@ -130,7 +130,7 @@ public class SetupAllMaterials
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        // 6. Применяем материалы к префабам камней
+        
         int rocksUpdated = 0;
         for (int i = 1; i <= 16; i++)
         {
@@ -150,7 +150,7 @@ public class SetupAllMaterials
             }
         }
 
-        // 7. Применяем материалы к префабу дерева
+        
         int treesUpdated = 0;
         string treePrefabPath = "Assets/Tree.prefab";
         GameObject treePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(treePrefabPath);
@@ -170,7 +170,7 @@ public class SetupAllMaterials
             PrefabUtility.UnloadPrefabContents(prefabInstance);
         }
 
-        // 8. Находим PlatformGenerator в сцене и назначаем материалы (если нужно)
+        
         PlatformGenerator[] generators = Object.FindObjectsOfType<PlatformGenerator>();
         int generatorsUpdated = 0;
         
@@ -178,9 +178,9 @@ public class SetupAllMaterials
         {
             SerializedObject so = new SerializedObject(generator);
             
-            // Назначаем материал для камней через рефлексию или SerializedProperty
-            // К сожалению, PlatformGenerator не имеет SerializeField для материалов камней/деревьев
-            // Но мы можем обновить префабы, и они будут использоваться при создании
+            
+            
+            
             
             generatorsUpdated++;
         }

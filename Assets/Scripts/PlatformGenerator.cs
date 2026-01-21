@@ -164,7 +164,7 @@ public class PlatformGenerator : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning($"Префаб дерева типа {treeData.treeType} не установлен или индекс неверный!");
+                Debug.LogWarning($"Префаб дерева типа {treeData.treeType} не установлен или индекс неверный");
             }
         }
 

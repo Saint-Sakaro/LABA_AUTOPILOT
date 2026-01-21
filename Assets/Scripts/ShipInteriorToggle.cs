@@ -27,7 +27,7 @@ public class ShipInteriorToggle : MonoBehaviour
         Debug.Log($"Outsides рендереров: {outsidesRenderers.Count}");
         Debug.Log($"Insides рендереров: {insidesRenderers.Count}");
         
-        // Создаем экземпляры материалов для Outsides
+        
         foreach (Renderer renderer in outsidesRenderers)
         {
             Material[] materialsInstance = new Material[renderer.materials.Length];
@@ -39,7 +39,7 @@ public class ShipInteriorToggle : MonoBehaviour
             outsidesMaterialsDict[renderer] = materialsInstance;
         }
         
-        // Создаем экземпляры материалов для Insides
+        
         foreach (Renderer renderer in insidesRenderers)
         {
             Material[] materialsInstance = new Material[renderer.materials.Length];
@@ -54,7 +54,7 @@ public class ShipInteriorToggle : MonoBehaviour
         SetOutsidesAlpha(1f);
         SetInsidesAlpha(0f);
         
-        Debug.Log("✅ Готово! Нажми H.");
+        Debug.Log("Готово Нажми H.");
     }
 
     private void Update()
@@ -158,7 +158,7 @@ public class ShipInteriorToggle : MonoBehaviour
             {
                 if (materials[i] == null) continue;
                 
-                // Работаем с _Alpha свойством в шейдере
+                
                 if (materials[i].HasProperty("_Alpha"))
                 {
                     materials[i].SetFloat("_Alpha", alpha);

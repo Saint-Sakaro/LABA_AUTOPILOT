@@ -17,11 +17,11 @@ public class LiquidLeakManager : MonoBehaviour
         {
             emissionModule = leakParticleSystem.emission;
             emissionModule.enabled = false;
-            Debug.Log("LiquidLeakManager инициализирован для: " + gameObject.name);
+            Debug.Log("LiquidLeakManager инициализирован для:" + gameObject.name);
         }
         else
         {
-            Debug.LogError("LeakParticleSystem НЕ ПРИВЯЗАН на " + gameObject.name + "!", gameObject);
+            Debug.LogError("LeakParticleSystem НЕ ПРИВЯЗАН на" + gameObject.name + "!", gameObject);
         }
     }
 
@@ -31,11 +31,11 @@ public class LiquidLeakManager : MonoBehaviour
         {
             var emissionModule = leakParticleSystem.emission;
             
-            // Проверяем две условия: есть ли утечка И есть ли жидкость в баке
+            
             bool hasLeak = attachedTank.HasLeak();
             bool hasLiquid = attachedTank.GetCurrentVolume() > 0;
             
-            // Частицы должны излучаться ТОЛЬКО если есть утечка И жидкость не закончилась
+            
             if (hasLeak && hasLiquid)
             {
                 if (!emissionModule.enabled)
@@ -45,7 +45,7 @@ public class LiquidLeakManager : MonoBehaviour
                     {
                         leakParticleSystem.Play();
                     }
-                    Debug.Log("✅ Пробоина! Emission включен, частицы запущены!");
+                    Debug.Log("Пробоина Emission включен, частицы запущены");
                 }
             }
             else
@@ -60,11 +60,11 @@ public class LiquidLeakManager : MonoBehaviour
                     
                     if (!hasLiquid)
                     {
-                        Debug.Log("❌ Жидкость закончилась, частицы остановлены!");
+                        Debug.Log("Жидкость закончилась, частицы остановлены");
                     }
                     else
                     {
-                        Debug.Log("❌ Пробоина закрыта, Emission выключен!");
+                        Debug.Log("Пробоина закрыта, Emission выключен");
                     }
                 }
             }

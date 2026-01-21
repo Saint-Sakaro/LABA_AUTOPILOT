@@ -16,7 +16,7 @@ public class FixTreeMaterials
             return;
         }
 
-        // Находим текстуры
+        
         string[] diffuseGuids = AssetDatabase.FindAssets("diffuse t:Texture2D", new[] { "Assets/Tree_Textures" });
         string[] normalGuids = AssetDatabase.FindAssets("normal_specular t:Texture2D", new[] { "Assets/Tree_Textures" });
         string[] shadowGuids = AssetDatabase.FindAssets("shadow t:Texture2D", new[] { "Assets/Tree_Textures" });
@@ -52,7 +52,7 @@ public class FixTreeMaterials
             translucencyTex = AssetDatabase.LoadAssetAtPath<Texture2D>(translucencyPath);
         }
 
-        // Создаем материалы для URP
+        
         Shader urpLitShader = Shader.Find("Universal Render Pipeline/Lit");
         if (urpLitShader == null)
         {
@@ -71,7 +71,7 @@ public class FixTreeMaterials
             return;
         }
 
-        // Создаем материал для коры
+        
         Material barkMaterial = new Material(urpLitShader);
         barkMaterial.name = "TreeBarkMaterial_URP";
         if (diffuseTex != null)
@@ -87,7 +87,7 @@ public class FixTreeMaterials
         barkMaterial.SetFloat("_Smoothness", 0.3f);
         barkMaterial.SetFloat("_Metallic", 0.0f);
 
-        // Создаем материал для листьев
+        
         Material leafMaterial = new Material(urpLitShader);
         leafMaterial.name = "TreeLeafMaterial_URP";
         if (diffuseTex != null)
@@ -105,7 +105,7 @@ public class FixTreeMaterials
         leafMaterial.SetFloat("_Cutoff", 0.3f);
         leafMaterial.EnableKeyword("_ALPHATEST_ON");
 
-        // Сохраняем материалы
+        
         string barkMaterialPath = "Assets/Materials/TreeBarkMaterial_URP.mat";
         string leafMaterialPath = "Assets/Materials/TreeLeafMaterial_URP.mat";
         
@@ -114,17 +114,17 @@ public class FixTreeMaterials
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        // Загружаем сохраненные материалы
+        
         Material savedBarkMaterial = AssetDatabase.LoadAssetAtPath<Material>(barkMaterialPath);
         Material savedLeafMaterial = AssetDatabase.LoadAssetAtPath<Material>(leafMaterialPath);
 
-        // Открываем префаб для редактирования
+        
         GameObject prefabInstance = PrefabUtility.LoadPrefabContents(treePrefabPath);
         MeshRenderer renderer = prefabInstance.GetComponent<MeshRenderer>();
         
         if (renderer != null)
         {
-            // Применяем материалы
+            
             Material[] materials = new Material[2];
             materials[0] = savedBarkMaterial;
             materials[1] = savedLeafMaterial;

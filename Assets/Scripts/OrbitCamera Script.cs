@@ -16,7 +16,7 @@ public class OrbitCameraFixed : MonoBehaviour
     {
         if (target == null) return;
         
-        // Управление мышью
+        
         if (Input.GetMouseButton(0))
         {
             float mouseX = Input.GetAxis("Mouse X") * sensitivity;
@@ -27,11 +27,11 @@ public class OrbitCameraFixed : MonoBehaviour
             rotationX = Mathf.Clamp(rotationX, -90f, 90f);
         }
         
-        // Масштабирование
+        
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         distance = Mathf.Clamp(distance - scroll * zoomSpeed, minDistance, maxDistance);
         
-        // Позиционирование камеры
+        
         Quaternion rotation = Quaternion.Euler(rotationX, rotationY, 0);
         Vector3 offset = rotation * Vector3.back * distance;
         

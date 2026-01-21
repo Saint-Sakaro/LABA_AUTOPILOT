@@ -92,16 +92,16 @@ public class VolumetricCloud : MonoBehaviour
         
         if (cloudHeight < criticalHeight)
         {
-            // Критическая высота - быстрое растворение
+            
             isDissolving = true;
             float dissolveFactor = Mathf.Clamp01(cloudHeight / criticalHeight);
-            float targetAlpha = dissolveFactor * baseAlpha * 0.1f; // Почти невидимо
+            float targetAlpha = dissolveFactor * baseAlpha * 0.1f; 
             
             float currentAlpha = alpha;
             alpha = Mathf.Lerp(currentAlpha, targetAlpha, Time.deltaTime * dissolveSpeed * 2f);
             SetAlpha(alpha);
             
-            // Полное удаление при достижении земли
+            
             if (destroyOnGroundContact && cloudHeight < safetyMargin)
             {
                 Destroy(gameObject);
@@ -110,12 +110,12 @@ public class VolumetricCloud : MonoBehaviour
         }
         else if (cloudHeight < minCloudHeight)
         {
-            // Приближение к минимальной высоте - постепенное рассеивание
+            
             float distanceToMin = cloudHeight - criticalHeight;
             float range = minCloudHeight - criticalHeight;
             float fadeFactor = Mathf.Clamp01(distanceToMin / range);
             
-            // Уменьшаем плотность и альфа при приближении к земле
+            
             float targetAlpha = baseAlpha * fadeFactor;
             
             if (pulsate)
@@ -133,16 +133,16 @@ public class VolumetricCloud : MonoBehaviour
         }
         else
         {
-            // Нормальная высота - восстанавливаем значения
+            
             if (isDissolving)
             {
-                // Постепенно восстанавливаем облако, если оно поднялось выше
+                
                 alpha = Mathf.Lerp(alpha, baseAlpha, Time.deltaTime * dissolveSpeed * 0.5f);
                 density = Mathf.Lerp(density, 1f, Time.deltaTime * dissolveSpeed * 0.3f);
                 SetAlpha(alpha);
                 SetDensity(density);
                 
-                // Если восстановилось достаточно - прекращаем растворение
+                
                 if (alpha > baseAlpha * 0.9f)
                 {
                     isDissolving = false;

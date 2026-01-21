@@ -7,7 +7,7 @@ public class SetupPlatformGenerator
     [MenuItem("Tools/Настроить PlatformGenerator (деревья + камни)")]
     public static void Setup()
     {
-        // 1. Находим префаб PlatformGenerator
+        
         string prefabPath = "Assets/Prefabs/v002/PlatformGenerator.prefab";
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
         
@@ -17,7 +17,7 @@ public class SetupPlatformGenerator
             return;
         }
 
-        // 2. Находим префаб дерева
+        
         GameObject treePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Tree.prefab");
         if (treePrefab == null)
         {
@@ -25,7 +25,7 @@ public class SetupPlatformGenerator
             return;
         }
 
-        // 3. Открываем префаб для редактирования
+        
         GameObject prefabInstance = PrefabUtility.LoadPrefabContents(prefabPath);
         PlatformGenerator generator = prefabInstance.GetComponent<PlatformGenerator>();
         
@@ -36,7 +36,7 @@ public class SetupPlatformGenerator
             return;
         }
 
-        // 4. Заполняем массив деревьев
+        
         SerializedObject so = new SerializedObject(generator);
         SerializedProperty treePrefabsProp = so.FindProperty("treePrefabs");
         
@@ -49,7 +49,7 @@ public class SetupPlatformGenerator
             }
         }
 
-        // 5. Создаем простые префабы камней, если их нет
+        
         string rocksFolderPath = "Assets/Prefabs/Rocks";
         if (!AssetDatabase.IsValidFolder(rocksFolderPath))
         {
@@ -67,15 +67,15 @@ public class SetupPlatformGenerator
             if (rockPrefab == null)
             {
                 needToCreateRocks = true;
-                // Создаем простой префаб камня из примитива
+                
                 GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 rock.name = $"Rock_{i}";
                 
-                // Случайный масштаб для разнообразия
+                
                 float scale = UnityEngine.Random.Range(0.5f, 1.5f);
                 rock.transform.localScale = new Vector3(scale, scale * 0.7f, scale);
                 
-                // Создаем префаб
+                
                 rockPrefab = PrefabUtility.SaveAsPrefabAsset(rock, rockPath);
                 Object.DestroyImmediate(rock);
                 
@@ -85,7 +85,7 @@ public class SetupPlatformGenerator
             rockPrefabs[i - 1] = rockPrefab;
         }
 
-        // 6. Заполняем массив камней
+        
         SerializedProperty rockPrefabsProp = so.FindProperty("rockPrefabs");
         if (rockPrefabsProp != null)
         {
@@ -96,7 +96,7 @@ public class SetupPlatformGenerator
             }
         }
 
-        // 7. Сохраняем изменения
+        
         so.ApplyModifiedProperties();
         PrefabUtility.SaveAsPrefabAsset(prefabInstance, prefabPath);
         PrefabUtility.UnloadPrefabContents(prefabInstance);
