@@ -71,7 +71,7 @@ public static class RockGenerator
         {
             for (float z = sectorCenterZ - ROCK_SPACING * 1.5f; z <= sectorCenterZ + ROCK_SPACING * 1.5f; z += ROCK_SPACING)
             {
-                // Уникальный seed для каждой позиции в цикле
+                
                 int gridX = Mathf.FloorToInt(x / ROCK_SPACING);
                 int gridZ = Mathf.FloorToInt(z / ROCK_SPACING);
                 int uniqueSeed = (gridX * 73856093) ^ (gridZ * 19349663) ^ SEED_OFFSET ^ rockCounter;

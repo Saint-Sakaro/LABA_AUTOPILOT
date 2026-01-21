@@ -55,7 +55,7 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
         AutoFindComponents();
         InitializeVisualization();
         initialized = true;
-        Debug.Log("WindDirection3DVisualizer: Автоматическая настройка завершена!");
+        Debug.Log("WindDirection3DVisualizer: автоматическая настройка завершена");
     }
     
     private void Start()
@@ -73,7 +73,7 @@ public class WindDirection3DVisualizer : MonoBehaviour, IPointerDownHandler, IDr
         
         if (shipController == null)
         {
-            Debug.LogError("WindDirection3DVisualizer: ShipController не найден!");
+            Debug.LogError("WindDirection3DVisualizer: shipController не найден");
             enabled = false;
             return;
         }

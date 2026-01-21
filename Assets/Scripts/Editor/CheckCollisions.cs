@@ -10,23 +10,23 @@ public class CheckCollisions
     {
         Debug.Log("=== Проверка коллизий ===");
 
-        // 1. Проверяем корабль
+        
         GameObject shipPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/v001/ship.prefab");
         if (shipPrefab == null)
         {
-            Debug.LogWarning("Не найден префаб корабля!");
+            Debug.LogWarning("Не найден префаб корабля");
         }
         else
         {
-            Debug.Log($"\n--- Корабль: {shipPrefab.name} ---");
+            Debug.Log($"\n--- корабль: {shipPrefab.name} ---");
             CheckPrefabColliders(shipPrefab, "Корабль");
         }
 
-        // 2. Проверяем дерево
+        
         GameObject treePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Tree.prefab");
         if (treePrefab == null)
         {
-            Debug.LogWarning("Не найден префаб дерева!");
+            Debug.LogWarning("Не найден префаб дерева");
         }
         else
         {
@@ -34,7 +34,7 @@ public class CheckCollisions
             CheckPrefabColliders(treePrefab, "Дерево");
         }
 
-        // 3. Ищем все префабы камней
+        
         string[] rockGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Prefabs" });
         List<GameObject> rockPrefabs = new List<GameObject>();
         
@@ -57,15 +57,15 @@ public class CheckCollisions
             }
             if (rockPrefabs.Count > 3)
             {
-                Debug.Log($"... и еще {rockPrefabs.Count - 3} префабов");
+                Debug.Log($". и еще {rockPrefabs.Count - 3} префабов");
             }
         }
         else
         {
-            Debug.LogWarning("\nПрефабы камней не найдены!");
+            Debug.LogWarning("\nПрефабы камней не найдены");
         }
 
-        // 4. Проверяем Environment.prefab
+        
         GameObject envPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/v002/Environment.prefab");
         if (envPrefab != null)
         {
@@ -88,28 +88,28 @@ public class CheckCollisions
 
         if (colliders.Length == 0)
         {
-            Debug.Log($"{name}: ❌ Нет коллайдеров");
+            Debug.Log($"{name}: Нет коллайдеров");
         }
         else
         {
-            Debug.Log($"{name}: ✅ Найдено коллайдеров: {colliders.Length}");
+            Debug.Log($"{name}: Найдено коллайдеров: {colliders.Length}");
             foreach (Collider col in colliders)
             {
                 if (col == null) continue;
                 string type = col.GetType().Name;
                 string trigger = col.isTrigger ? "Trigger" : "Collider";
                 string rigid = col.attachedRigidbody != null ? $" + Rigidbody (kinematic: {col.attachedRigidbody.isKinematic})" : "";
-                Debug.Log($"  - {col.gameObject.name}: {type} ({trigger}){rigid}");
+                Debug.Log($"- {col.gameObject.name}: {type} ({trigger}){rigid}");
             }
         }
 
         if (rigidbodies.Length > 0)
         {
-            Debug.Log($"{name}: ⚠️ Найдено Rigidbody: {rigidbodies.Length}");
+            Debug.Log($"{name}: ️ Найдено Rigidbody: {rigidbodies.Length}");
             foreach (Rigidbody rb in rigidbodies)
             {
                 if (rb == null) continue;
-                Debug.Log($"  - {rb.gameObject.name}: isKinematic={rb.isKinematic}, useGravity={rb.useGravity}");
+                Debug.Log($"- {rb.gameObject.name}: isKinematic={rb.isKinematic}, useGravity={rb.useGravity}");
             }
         }
     }
@@ -119,7 +119,7 @@ public class CheckCollisions
     {
         Debug.Log("=== Проверка коллизий в сцене ===");
 
-        // Ищем корабль в сцене
+        
         ShipController ship = Object.FindObjectOfType<ShipController>();
         if (ship != null)
         {
@@ -137,7 +137,7 @@ public class CheckCollisions
             }
         }
 
-        // Ищем деревья и камни в сцене
+        
         GameObject[] allObjects = Object.FindObjectsOfType<GameObject>();
         int treeCount = 0;
         int rockCount = 0;
@@ -150,7 +150,7 @@ public class CheckCollisions
                 Collider col = obj.GetComponent<Collider>();
                 if (col != null && !col.isTrigger)
                 {
-                    Debug.Log($"⚠️ Дерево в сцене '{obj.name}' имеет физический коллайдер!");
+                    Debug.Log($"️ Дерево в сцене '{obj.name}' имеет физический коллайдер");
                 }
             }
             if (obj.name.Contains("Rock") || obj.name.Contains("Stone"))
@@ -159,7 +159,7 @@ public class CheckCollisions
                 Collider col = obj.GetComponent<Collider>();
                 if (col != null && !col.isTrigger)
                 {
-                    Debug.Log($"⚠️ Камень в сцене '{obj.name}' имеет физический коллайдер!");
+                    Debug.Log($"️ Камень в сцене '{obj.name}' имеет физический коллайдер");
                 }
             }
         }

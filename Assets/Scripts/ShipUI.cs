@@ -76,9 +76,9 @@ public class ShipUI : MonoBehaviour
 
     private float updateTimer = 0f;
     
-    // Защита от двойного нажатия кнопки автопилота
+    
     private float lastAutopilotButtonClickTime = 0f;
-    private const float AUTOPILOT_BUTTON_COOLDOWN = 0.5f; // Минимальный интервал между нажатиями (секунды)
+    private const float AUTOPILOT_BUTTON_COOLDOWN = 0.5f; 
 
     private void Start()
     {
@@ -90,12 +90,12 @@ public class ShipUI : MonoBehaviour
 
         if (shipController == null)
         {
-            Debug.LogError("ShipUI: ShipController не найден! Назначьте его в Inspector.");
+            Debug.LogError("ShipUI: shipController не найден Назначьте его в Inspector.");
             enabled = false;
             return;
         }
         
-        // Находим FuelManager
+        
         if (fuelManager == null)
         {
             fuelManager = FindObjectOfType<FuelManager>();
@@ -103,10 +103,10 @@ public class ShipUI : MonoBehaviour
         
         if (fuelManager == null && showFuelDisplay)
         {
-            Debug.LogWarning("ShipUI: FuelManager не найден! UI топлива не будет отображаться.");
+            Debug.LogWarning("ShipUI: fuelManager не найден UI топлива не будет отображаться.");
         }
         
-        // Находим LandingRadar
+        
         if (landingRadar == null && showRadarDisplay)
         {
             landingRadar = FindObjectOfType<LandingRadar>();
@@ -114,15 +114,15 @@ public class ShipUI : MonoBehaviour
         
         if (landingRadar == null && showRadarDisplay)
         {
-            Debug.LogWarning("ShipUI: LandingRadar не найден! UI радара не будет отображаться.");
+            Debug.LogWarning("ShipUI: landingRadar не найден UI радара не будет отображаться.");
         }
         else if (landingRadar != null && showRadarDisplay)
         {
-            // Подписываемся на обновления радара
+            
             landingRadar.OnSitesUpdated += OnRadarSitesUpdated;
         }
         
-        // Находим LandingAutopilot
+        
         if (landingAutopilot == null && showAutopilotDisplay)
         {
             landingAutopilot = FindObjectOfType<LandingAutopilot>();
@@ -130,15 +130,15 @@ public class ShipUI : MonoBehaviour
         
         if (landingAutopilot == null && showAutopilotDisplay)
         {
-            Debug.LogWarning("ShipUI: LandingAutopilot не найден! UI автопилота не будет отображаться.");
+            Debug.LogWarning("ShipUI: landingAutopilot не найден UI автопилота не будет отображаться.");
         }
         else if (landingAutopilot != null && showAutopilotDisplay)
         {
-            // Подписываемся на события автопилота
+            
             landingAutopilot.OnAutopilotStateChanged += OnAutopilotStateChanged;
             landingAutopilot.OnLandingPhaseChanged += OnLandingPhaseChanged;
             
-            // Настраиваем кнопку
+            
             if (autopilotButton != null)
             {
                 autopilotButton.onClick.AddListener(OnAutopilotButtonClicked);
@@ -148,7 +148,7 @@ public class ShipUI : MonoBehaviour
 
         if (speedText == null)
         {
-            Debug.LogWarning("ShipUI: Speed Text не назначен!");
+            Debug.LogWarning("ShipUI: speed Text не назначен");
         }
 
 
@@ -156,7 +156,7 @@ public class ShipUI : MonoBehaviour
         {
             if (engineThrustTexts[i] == null)
             {
-                Debug.LogWarning($"ShipUI: Engine {i + 1} Text не назначен!");
+                Debug.LogWarning($"ShipUI: engine {i + 1} Text не назначен");
             }
         }
 
@@ -177,7 +177,7 @@ public class ShipUI : MonoBehaviour
         }
         else if (showCenterOfMassControl && centerOfMassSlider == null)
         {
-            Debug.LogWarning("ShipUI: Center of Mass Slider не назначен, но showCenterOfMassControl включен!");
+            Debug.LogWarning("ShipUI: center of Mass Slider не назначен, но showCenterOfMassControl включен");
         }
 
 
@@ -195,7 +195,7 @@ public class ShipUI : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning("ShipUI: Wind Strength Slider не назначен, но showWindControl включен!");
+                Debug.LogWarning("ShipUI: wind Strength Slider не назначен, но showWindControl включен");
             }
 
             if (use3DWindVisualizer && windDirection3DVisualizer != null)
@@ -221,7 +221,7 @@ public class ShipUI : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("ShipUI: Wind Direction Vertical Slider не назначен для вертикального компонента!");
+                    Debug.LogWarning("ShipUI: wind Direction Vertical Slider не назначен для вертикального компонента");
                 }
                 
                 if (windDirectionVerticalText != null)
@@ -242,14 +242,14 @@ public class ShipUI : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("ShipUI: Wind Direction Horizontal Slider не назначен, но showWindControl включен!");
+                    Debug.LogWarning("ShipUI: wind Direction Horizontal Slider не назначен, но showWindControl включен");
                 }
 
                 if (windDirectionVerticalSlider != null)
                 {
                     windDirectionVerticalSlider.minValue = -90f;
                     windDirectionVerticalSlider.maxValue = 90f;
-                    // Преобразуем силу (-1 до +1) в угол для слайдера
+                    
                     float currentStrength = shipController.GetWindVerticalStrength();
                     windDirectionVerticalSlider.value = currentStrength * 90f;
                     windDirectionVerticalSlider.onValueChanged.AddListener(OnWindDirectionVerticalSliderChanged);
@@ -258,7 +258,7 @@ public class ShipUI : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("ShipUI: Wind Direction Vertical Slider не назначен, но showWindControl включен!");
+                    Debug.LogWarning("ShipUI: wind Direction Vertical Slider не назначен, но showWindControl включен");
                 }
                 
                 if (windDirectionHorizontalText != null)
@@ -312,13 +312,13 @@ public class ShipUI : MonoBehaviour
             UpdateWindDirectionVerticalText();
         }
         
-        // Обновляем отображение топлива
+        
         if (showFuelDisplay)
         {
             UpdateFuelDisplay();
         }
         
-        // Обновляем отображение радара
+        
         if (showRadarDisplay)
         {
             UpdateRadarDisplay();
@@ -412,7 +412,7 @@ public class ShipUI : MonoBehaviour
         if (windDirectionVerticalText == null || shipController == null) return;
 
         float strength = shipController.GetWindVerticalStrength();
-        // Преобразуем силу (-1 до +1) в угол для отображения
+        
         float angle = strength * 90f;
         windDirectionVerticalText.text = $"Вертикальная сила: {strength:F2} ({angle:F0}°)\n(↑ вверх / ↓ вниз)";
     }
@@ -424,7 +424,7 @@ public class ShipUI : MonoBehaviour
     {
         if (shipController == null)
         {
-            Debug.LogWarning("ShipUI: shipController is null in OnWindStrengthSliderChanged!");
+            Debug.LogWarning("ShipUI: shipController is null in OnWindStrengthSliderChanged");
             return;
         }
 
@@ -442,7 +442,7 @@ public class ShipUI : MonoBehaviour
     {
         if (shipController == null)
         {
-            Debug.LogWarning("ShipUI: shipController is null in OnWindDirectionHorizontalSliderChanged!");
+            Debug.LogWarning("ShipUI: shipController is null in OnWindDirectionHorizontalSliderChanged");
             return;
         }
 
@@ -460,12 +460,12 @@ public class ShipUI : MonoBehaviour
     {
         if (shipController == null)
         {
-            Debug.LogWarning("ShipUI: shipController is null in OnWindDirectionVerticalSliderChanged!");
+            Debug.LogWarning("ShipUI: shipController is null in OnWindDirectionVerticalSliderChanged");
             return;
         }
 
-        // Преобразуем угол (-90 до +90) в силу (-1 до +1)
-        float strength = value / 90f; // -90° = -1, 0° = 0, +90° = +1
+        
+        float strength = value / 90f; 
         shipController.SetWindVerticalStrength(strength);
         UpdateWindDirectionVerticalText();
 
@@ -483,17 +483,17 @@ public class ShipUI : MonoBehaviour
         float totalMaxFuel = fuelManager.GetTotalMaxFuel();
         float fuelPercentage = fuelManager.GetFuelPercentage();
         
-        // Обновляем текст
+        
         if (fuelText != null)
         {
             fuelText.text = string.Format(fuelFormat, totalFuel, totalMaxFuel, fuelPercentage);
             
-            // Меняем цвет текста в зависимости от уровня топлива
-            if (fuelPercentage <= 0.1f) // Критический уровень
+            
+            if (fuelPercentage <= 0.1f) 
             {
                 fuelText.color = criticalFuelColor;
             }
-            else if (fuelPercentage <= 0.2f) // Низкий уровень
+            else if (fuelPercentage <= 0.2f) 
             {
                 fuelText.color = lowFuelColor;
             }
@@ -504,23 +504,23 @@ public class ShipUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Обновляет отображение информации о радаре
-    /// </summary>
+    
+    
+    
     private void UpdateRadarDisplay()
     {
         if (landingRadar == null) return;
         
         List<LandingSite> sites = landingRadar.GetFoundSites();
         
-        // Обновляем статус радара
+        
         if (radarStatusText != null)
         {
             radarStatusText.text = string.Format(radarStatusFormat, sites.Count);
             radarStatusText.color = sites.Count > 0 ? radarGoodColor : radarWarningColor;
         }
         
-        // Обновляем информацию о лучшей площадке
+        
         if (radarBestSiteText != null)
         {
             if (sites.Count > 0)
@@ -540,12 +540,12 @@ public class ShipUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Обработчик события обновления площадок радара
-    /// </summary>
+    
+    
+    
     private void OnRadarSitesUpdated(List<LandingSite> sites)
     {
-        // Обновляем UI сразу при получении новых данных
+        
         UpdateRadarDisplay();
     }
     
@@ -571,13 +571,13 @@ public class ShipUI : MonoBehaviour
             windDirectionVerticalSlider.onValueChanged.RemoveListener(OnWindDirectionVerticalSliderChanged);
         }
         
-        // Отписываемся от событий радара
+        
         if (landingRadar != null)
         {
             landingRadar.OnSitesUpdated -= OnRadarSitesUpdated;
         }
         
-        // Отписываемся от событий
+        
         if (landingRadar != null)
         {
             landingRadar.OnSitesUpdated -= OnRadarSitesUpdated;
@@ -590,16 +590,16 @@ public class ShipUI : MonoBehaviour
         }
     }
     
-    // ========== АВТОПИЛОТ UI ==========
     
-    /// <summary>
-    /// Обновляет отображение автопилота
-    /// </summary>
+    
+    
+    
+    
     private void UpdateAutopilotDisplay()
     {
         if (landingAutopilot == null)
         {
-            // Если автопилот не найден, скрываем UI
+            
             if (autopilotStatusText != null) autopilotStatusText.text = "Автопилот не найден";
             if (autopilotPhaseText != null) autopilotPhaseText.text = "—";
             return;
@@ -607,7 +607,7 @@ public class ShipUI : MonoBehaviour
         
         bool isActive = landingAutopilot.IsActive();
         
-        // Обновляем текст статуса
+        
         if (autopilotStatusText != null)
         {
             string status = isActive ? "АКТИВЕН" : "НЕАКТИВЕН";
@@ -615,7 +615,7 @@ public class ShipUI : MonoBehaviour
             autopilotStatusText.color = isActive ? autopilotActiveColor : autopilotInactiveColor;
         }
         
-        // Обновляем текст фазы
+        
         if (autopilotPhaseText != null)
         {
             if (isActive)
@@ -630,7 +630,7 @@ public class ShipUI : MonoBehaviour
             }
         }
         
-        // Обновляем кнопку
+        
         if (autopilotButton != null)
         {
             var buttonText = autopilotButton.GetComponentInChildren<TextMeshProUGUI>();
@@ -642,9 +642,9 @@ public class ShipUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получает название фазы посадки
-    /// </summary>
+    
+    
+    
     private string GetPhaseName(LandingAutopilot.LandingPhase phase)
     {
         switch (phase)
@@ -664,62 +664,62 @@ public class ShipUI : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Обработчик нажатия кнопки автопилота
-    /// Публичный метод для использования в Unity Inspector
-    /// </summary>
+    
+    
+    
+    
     public void OnAutopilotButtonClicked()
     {
-        // Защита от двойного нажатия
+        
         float currentTime = Time.time;
         if (currentTime - lastAutopilotButtonClickTime < AUTOPILOT_BUTTON_COOLDOWN)
         {
-            Debug.LogWarning($"ShipUI: Кнопка автопилота нажата слишком быстро! Игнорирую нажатие. (прошло {currentTime - lastAutopilotButtonClickTime:F3}с, требуется {AUTOPILOT_BUTTON_COOLDOWN}с)");
+            Debug.LogWarning($"ShipUI: кнопка автопилота нажата слишком быстро Игнорирую нажатие. (прошло {currentTime - lastAutopilotButtonClickTime:F3}с, требуется {AUTOPILOT_BUTTON_COOLDOWN}с)");
             return;
         }
         lastAutopilotButtonClickTime = currentTime;
         
         if (landingAutopilot == null)
         {
-            Debug.LogError("ShipUI: LandingAutopilot не найден! Назначьте его в Inspector.");
+            Debug.LogError("ShipUI: landingAutopilot не найден Назначьте его в Inspector.");
             return;
         }
         
         bool wasActive = landingAutopilot.IsActive();
-        Debug.Log($"ShipUI: Кнопка нажата. Текущий статус автопилота: {(wasActive ? "АКТИВЕН" : "НЕАКТИВЕН")}");
+        Debug.Log($"ShipUI: кнопка нажата. Текущий статус автопилота: {(wasActive ?"АКТИВЕН" : "НЕАКТИВЕН")}");
         
         if (wasActive)
         {
-            // Останавливаем автопилот
-            Debug.Log("ShipUI: Остановка автопилота...");
+            
+            Debug.Log("ShipUI: остановка автопилота.");
             landingAutopilot.StopLanding();
         }
         else
         {
-            // Запускаем автопилот
-            Debug.Log("ShipUI: Запуск автопилота...");
+            
+            Debug.Log("ShipUI: запуск автопилота.");
             landingAutopilot.StartLanding();
             
-            // Проверяем статус после запуска
+            
             bool isNowActive = landingAutopilot.IsActive();
-            Debug.Log($"ShipUI: После запуска статус автопилота: {(isNowActive ? "АКТИВЕН" : "НЕАКТИВЕН")}");
+            Debug.Log($"ShipUI: после запуска статус автопилота: {(isNowActive ?"АКТИВЕН" : "НЕАКТИВЕН")}");
         }
         
-        // Немедленно обновляем UI
+        
         UpdateAutopilotDisplay();
     }
     
-    /// <summary>
-    /// Обработчик изменения состояния автопилота
-    /// </summary>
+    
+    
+    
     private void OnAutopilotStateChanged(bool isActive)
     {
         UpdateAutopilotDisplay();
     }
     
-    /// <summary>
-    /// Обработчик изменения фазы посадки
-    /// </summary>
+    
+    
+    
     private void OnLandingPhaseChanged(LandingAutopilot.LandingPhase phase)
     {
         UpdateAutopilotDisplay();

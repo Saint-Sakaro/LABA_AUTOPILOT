@@ -64,7 +64,7 @@ public class ShipPhysicsManager : MonoBehaviour
             tank.SetConsuming(false);
         }
         
-        Debug.Log("Посадка начата! Мотры отключены, корабль падает под гравитацией.");
+        Debug.Log("Посадка начата Мотры отключены, корабль падает под гравитацией.");
     }
     
     private void UpdateLanding()
@@ -83,7 +83,7 @@ public class ShipPhysicsManager : MonoBehaviour
         float currentTilt = Vector3.Angle(transform.up, Vector3.up);
         if (currentTilt > maxTiltAngle)
         {
-            Debug.LogWarning($"ВНИМАНИЕ! Наклон корабля {currentTilt:F1}°! Корабль нестабилен!");
+            Debug.LogWarning($"ВНИМАНИЕ Наклон корабля {currentTilt:F1}° Корабль нестабилен");
         }
     }
     
@@ -98,7 +98,7 @@ public class ShipPhysicsManager : MonoBehaviour
             tank.SetConsuming(true);
         }
         
-        Debug.Log("Посадка завершена!");
+        Debug.Log("Посадка завершена");
     }
 
     public void CreateLeakInRandomTank(float leakRate = 50f)
@@ -108,7 +108,7 @@ public class ShipPhysicsManager : MonoBehaviour
         int randomIndex = Random.Range(0, fuelTanks.Length);
         fuelTanks[randomIndex].CreateLeak(leakRate);
         
-        Debug.Log($"Пробоина в баке {randomIndex}! Утечка {leakRate} л/сек");
+        Debug.Log($"Пробоина в баке {randomIndex} Утечка {leakRate} л/сек");
     }
     
 

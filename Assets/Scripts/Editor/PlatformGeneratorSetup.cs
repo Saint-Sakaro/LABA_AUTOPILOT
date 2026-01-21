@@ -51,7 +51,7 @@ public class PlatformGeneratorSetup : Editor
     {
         SerializedProperty treePrefabsProp = serializedObject.FindProperty("treePrefabs");
         
-        // Ищем префаб Tree
+        
         string[] guids = AssetDatabase.FindAssets("Tree t:Prefab");
         GameObject defaultTree = null;
         
@@ -67,7 +67,7 @@ public class PlatformGeneratorSetup : Editor
             return;
         }
 
-        // Заполняем все пустые слоты
+        
         int filled = 0;
         for (int i = 0; i < treePrefabsProp.arraySize; i++)
         {
@@ -87,7 +87,7 @@ public class PlatformGeneratorSetup : Editor
     {
         SerializedProperty rockPrefabsProp = serializedObject.FindProperty("rockPrefabs");
         
-        // Ищем все префабы с "rock" или "stone" в названии
+        
         string[] guids = AssetDatabase.FindAssets("rock t:Prefab");
         if (guids.Length == 0)
         {
@@ -96,7 +96,7 @@ public class PlatformGeneratorSetup : Editor
 
         if (guids.Length == 0)
         {
-            // Предлагаем создать простые префабы камней из примитивов
+            
             if (EditorUtility.DisplayDialog("Префабы камней не найдены", 
                 "Не найдены префабы камней. Хотите создать простые префабы камней из примитивов Unity?", 
                 "Да, создать", "Отмена"))
@@ -106,7 +106,7 @@ public class PlatformGeneratorSetup : Editor
             return;
         }
 
-        // Заполняем слоты найденными префабами
+        
         int filled = 0;
         int guidIndex = 0;
         for (int i = 0; i < rockPrefabsProp.arraySize && guidIndex < guids.Length; i++)
@@ -133,7 +133,7 @@ public class PlatformGeneratorSetup : Editor
 
     private void CreateSimpleRockPrefabs(SerializedProperty rockPrefabsProp)
     {
-        // Создаем папку для префабов камней
+        
         string prefabFolder = "Assets/Prefabs/Rocks";
         if (!AssetDatabase.IsValidFolder(prefabFolder))
         {
@@ -146,22 +146,22 @@ public class PlatformGeneratorSetup : Editor
             SerializedProperty element = rockPrefabsProp.GetArrayElementAtIndex(i);
             if (element.objectReferenceValue == null)
             {
-                // Создаем простой камень из примитива
+                
                 GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 rock.name = $"Rock_{i + 1}";
                 
-                // Случайный масштаб для разнообразия
+                
                 float scale = UnityEngine.Random.Range(0.5f, 2f);
                 rock.transform.localScale = new Vector3(scale, scale * 0.7f, scale);
                 
-                // Создаем префаб
+                
                 string prefabPath = $"{prefabFolder}/{rock.name}.prefab";
                 GameObject prefab = PrefabUtility.SaveAsPrefabAsset(rock, prefabPath);
                 
                 element.objectReferenceValue = prefab;
                 created++;
                 
-                // Удаляем временный объект
+                
                 DestroyImmediate(rock);
             }
         }

@@ -42,8 +42,8 @@ public class LiquidTank : MonoBehaviour
     
     private void Update()
     {
-        // Расход топлива теперь управляется FuelManager, а не здесь
-        // Оставляем только для обратной совместимости, если FuelManager не используется
+        
+        
         if (isConsuming && currentVolume > 0)
         {
             float consumption = consumptionRate * Time.deltaTime;
@@ -78,7 +78,7 @@ public class LiquidTank : MonoBehaviour
     {
         hasLeak = true;
         leakRate = leakRateValue;
-        Debug.Log($"Пробоина создана! Утечка: {leakRate} л/сек");
+        Debug.Log($"Пробоина создана Утечка: {leakRate} л/сек");
     }
     
 
@@ -124,17 +124,17 @@ public class LiquidTank : MonoBehaviour
     public float GetFillPercentage() => currentVolume / maxVolume;
     public float GetMaxVolume() => maxVolume;
     
-    /// <summary>
-    /// Устанавливает потребление топлива извне (например, от FuelManager)
-    /// </summary>
+    
+    
+    
     public void SetConsumptionRate(float rate)
     {
         consumptionRate = rate;
     }
     
-    /// <summary>
-    /// Отключает автоматическое потребление (для использования с FuelManager)
-    /// </summary>
+    
+    
+    
     public void DisableAutoConsumption()
     {
         isConsuming = false;

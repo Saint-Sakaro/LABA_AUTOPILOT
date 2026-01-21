@@ -8,7 +8,7 @@ public class RefreshSceneObjectsMaterials
     [MenuItem("Tools/Обновить материалы объектов в сцене")]
     public static void RefreshSceneMaterials()
     {
-        // Находим материалы
+        
         Material rockMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/RockMaterial.mat");
         Material treeBarkMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TreeBarkMaterial_URP.mat");
         Material treeLeafMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TreeLeafMaterial_URP.mat");
@@ -22,12 +22,12 @@ public class RefreshSceneObjectsMaterials
         int rocksUpdated = 0;
         int treesUpdated = 0;
 
-        // Находим все объекты в сцене
+        
         GameObject[] allObjects = Object.FindObjectsOfType<GameObject>();
 
         foreach (GameObject obj in allObjects)
         {
-            // Проверяем камни
+            
             if (obj.name.StartsWith("Rock_") || obj.name.Contains("Rock"))
             {
                 MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
@@ -38,13 +38,13 @@ public class RefreshSceneObjectsMaterials
                 }
             }
 
-            // Проверяем деревья
+            
             if (obj.name.Contains("Tree") || obj.name.Contains("tree"))
             {
                 MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
                 if (renderer != null)
                 {
-                    // Если есть несколько материалов (кора и листья)
+                    
                     if (treeBarkMaterial != null && treeLeafMaterial != null)
                     {
                         Material[] materials = new Material[2];
@@ -93,7 +93,7 @@ public class RefreshSceneObjectsMaterials
             if (obj.name.StartsWith("Rock_") || obj.name.Contains("Rock") || 
                 obj.name.Contains("Tree") || obj.name.Contains("tree"))
             {
-                // Не удаляем префабы и корневые объекты генератора
+                
                 if (obj.transform.parent != null && 
                     !obj.name.Contains("PlatformGenerator") &&
                     !AssetDatabase.Contains(obj))

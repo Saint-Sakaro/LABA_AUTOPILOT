@@ -26,7 +26,7 @@ public class EngineFireController : MonoBehaviour
     {
         if (fireParticles == null)
         {
-            Debug.LogError("Fire Particles не назначены на EngineFireController!");
+            Debug.LogError("Fire Particles не назначены на EngineFireController");
             return;
         }
         

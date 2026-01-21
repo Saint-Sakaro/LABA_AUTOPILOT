@@ -10,10 +10,10 @@ public class FixPinkMaterials
     {
         Debug.Log("=== Начало исправления розовых материалов ===");
 
-        // Находим правильный URP Lit шейдер
+        
         Shader urpLitShader = null;
         
-        // Пробуем разные варианты имени шейдера
+        
         string[] shaderNames = new string[]
         {
             "Universal Render Pipeline/Lit",
@@ -35,7 +35,7 @@ public class FixPinkMaterials
 
         if (urpLitShader == null)
         {
-            // Пробуем найти через AssetDatabase
+            
             string[] shaderGuids = AssetDatabase.FindAssets("Lit t:Shader");
             foreach (string guid in shaderGuids)
             {
@@ -64,12 +64,12 @@ public class FixPinkMaterials
 
         Debug.Log($"Используется шейдер: {urpLitShader.name}");
 
-        // Находим материалы
+        
         Material rockMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/RockMaterial.mat");
         Material treeBarkMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TreeBarkMaterial_URP.mat");
         Material treeLeafMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/TreeLeafMaterial_URP.mat");
 
-        // Исправляем материалы, если они используют неправильный шейдер
+        
         if (rockMaterial != null)
         {
             if (rockMaterial.shader != urpLitShader)
@@ -103,7 +103,7 @@ public class FixPinkMaterials
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        // Обновляем все префабы камней
+        
         int rocksFixed = 0;
         for (int i = 1; i <= 16; i++)
         {
@@ -127,7 +127,7 @@ public class FixPinkMaterials
             }
         }
 
-        // Обновляем префаб дерева
+        
         int treesFixed = 0;
         string treePrefabPath = "Assets/Tree.prefab";
         GameObject treePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(treePrefabPath);
@@ -151,7 +151,7 @@ public class FixPinkMaterials
             PrefabUtility.UnloadPrefabContents(prefabInstance);
         }
 
-        // Обновляем объекты в сцене
+        
         int sceneRocksFixed = 0;
         int sceneTreesFixed = 0;
         
@@ -161,7 +161,7 @@ public class FixPinkMaterials
             MeshRenderer renderer = obj.GetComponent<MeshRenderer>();
             if (renderer == null) continue;
 
-            // Проверяем, розовый ли материал (материал с отсутствующим шейдером)
+            
             if (renderer.sharedMaterial != null && renderer.sharedMaterial.shader.name == "Hidden/InternalErrorShader")
             {
                 if (obj.name.StartsWith("Rock_") || obj.name.Contains("Rock"))

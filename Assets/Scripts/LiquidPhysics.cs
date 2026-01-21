@@ -12,7 +12,7 @@ public class LiquidPhysics : MonoBehaviour
         shipRigidbody = GetComponent<Rigidbody>();
         if (shipRigidbody == null)
         {
-            Debug.LogError("Rigidbody не найден на корабле!");
+            Debug.LogError("Rigidbody не найден на корабле");
         }
     }
     

@@ -2,32 +2,32 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
-/// <summary>
-/// Менеджер топлива - управляет расходом топлива в зависимости от работы двигателей
-/// </summary>
+
+
+
 public class FuelManager : MonoBehaviour
 {
     [Header("Fuel Settings")]
-    [SerializeField] private float baseConsumptionRate = 10f; // Базовый расход топлива (л/сек) при 100% тяги
-    [SerializeField] private float minConsumptionRate = 0.5f; // Минимальный расход при холостом ходу (л/сек)
-    [SerializeField] private float consumptionMultiplier = 1f; // Множитель расхода (для настройки)
+    [SerializeField] private float baseConsumptionRate = 10f; 
+    [SerializeField] private float minConsumptionRate = 0.5f; 
+    [SerializeField] private float consumptionMultiplier = 1f; 
     
     [Header("Tank Settings")]
-    [SerializeField] private bool autoFindTanks = true; // Автоматически находить баки
+    [SerializeField] private bool autoFindTanks = true; 
     [SerializeField] private List<LiquidTank> fuelTanks = new List<LiquidTank>();
     
     [Header("Engine Settings")]
-    [SerializeField] private ShipController shipController; // Ссылка на ShipController для получения тяги двигателей
+    [SerializeField] private ShipController shipController; 
     
     [Header("UI")]
-    [SerializeField] private bool showFuelInfo = true; // Показывать информацию о топливе в консоли
+    [SerializeField] private bool showFuelInfo = true; 
     
     [Header("Low Fuel Warning")]
     [SerializeField] private bool enableLowFuelWarning = true;
-    [SerializeField] private float lowFuelThreshold = 0.2f; // Порог низкого топлива (20%)
-    [SerializeField] private float criticalFuelThreshold = 0.1f; // Критический уровень (10%)
+    [SerializeField] private float lowFuelThreshold = 0.2f; 
+    [SerializeField] private float criticalFuelThreshold = 0.1f; 
     
-    // События
+    
     public delegate void FuelChangedDelegate(float totalFuel, float totalMaxFuel, float fuelPercentage);
     public event FuelChangedDelegate OnFuelChanged;
     
@@ -37,7 +37,7 @@ public class FuelManager : MonoBehaviour
     public delegate void CriticalFuelWarningDelegate(float fuelPercentage);
     public event CriticalFuelWarningDelegate OnCriticalFuelWarning;
     
-    // Статус
+    
     private float lastTotalFuel = -1f;
     private bool lowFuelWarningShown = false;
     private bool criticalFuelWarningShown = false;
@@ -54,7 +54,7 @@ public class FuelManager : MonoBehaviour
             shipController = FindObjectOfType<ShipController>();
         }
         
-        // Инициализируем отслеживание топлива
+        
         UpdateFuelStatus();
     }
     
@@ -65,34 +65,34 @@ public class FuelManager : MonoBehaviour
             return;
         }
         
-        // Получаем суммарную тягу всех двигателей
+        
         float totalThrust = GetTotalEngineThrust();
         
-        // Рассчитываем расход топлива на основе тяги
+        
         float consumptionRate = CalculateConsumptionRate(totalThrust);
         
-        // Распределяем расход между баками
+        
         ConsumeFuel(consumptionRate * Time.deltaTime);
         
-        // Обновляем статус топлива
+        
         UpdateFuelStatus();
     }
     
-    /// <summary>
-    /// Находит все баки с топливом в иерархии корабля
-    /// </summary>
+    
+    
+    
     private void FindAllTanks()
     {
         fuelTanks.Clear();
         
-        // Ищем баки в иерархии корабля
+        
         Transform shipTransform = transform;
         if (shipController != null)
         {
             shipTransform = shipController.transform;
         }
         
-        // Ищем в дочерних объектах
+        
         LiquidTank[] allTanks = shipTransform.GetComponentsInChildren<LiquidTank>();
         foreach (var tank in allTanks)
         {
@@ -102,7 +102,7 @@ public class FuelManager : MonoBehaviour
             }
         }
         
-        // Также ищем в родительском объекте (если баки на уровне корабля)
+        
         if (shipTransform.parent != null)
         {
             LiquidTank[] parentTanks = shipTransform.parent.GetComponentsInChildren<LiquidTank>();
@@ -115,12 +115,12 @@ public class FuelManager : MonoBehaviour
             }
         }
         
-        Debug.Log($"FuelManager: Найдено {fuelTanks.Count} баков с топливом");
+        Debug.Log($"FuelManager: найдено {fuelTanks.Count} баков с топливом");
     }
     
-    /// <summary>
-    /// Получает суммарную тягу всех двигателей
-    /// </summary>
+    
+    
+    
     private float GetTotalEngineThrust()
     {
         if (shipController == null)
@@ -128,23 +128,23 @@ public class FuelManager : MonoBehaviour
             return 0f;
         }
         
-        // Используем публичный метод из ShipController
+        
         return shipController.GetTotalEngineThrust();
     }
     
-    /// <summary>
-    /// Рассчитывает скорость расхода топлива на основе тяги
-    /// </summary>
+    
+    
+    
     private float CalculateConsumptionRate(float totalThrust)
     {
-        // Расход пропорционален тяге: при 0% тяги - минимальный расход, при 100% - максимальный
+        
         float consumptionRate = Mathf.Lerp(minConsumptionRate, baseConsumptionRate, totalThrust);
         return consumptionRate * consumptionMultiplier;
     }
     
-    /// <summary>
-    /// Расходует топливо, распределяя его между баками пропорционально их объему
-    /// </summary>
+    
+    
+    
     private void ConsumeFuel(float totalConsumption)
     {
         if (fuelTanks.Count == 0 || totalConsumption <= 0f)
@@ -152,7 +152,7 @@ public class FuelManager : MonoBehaviour
             return;
         }
         
-        // Вычисляем общий объем всех баков
+        
         float totalVolume = 0f;
         foreach (var tank in fuelTanks)
         {
@@ -164,10 +164,10 @@ public class FuelManager : MonoBehaviour
         
         if (totalVolume <= 0f)
         {
-            return; // Топливо закончилось
+            return; 
         }
         
-        // Распределяем расход пропорционально объему в каждом баке
+        
         foreach (var tank in fuelTanks)
         {
             if (tank == null || tank.GetCurrentVolume() <= 0f)
@@ -179,21 +179,21 @@ public class FuelManager : MonoBehaviour
             float tankRatio = tankVolume / totalVolume;
             float tankConsumption = totalConsumption * tankRatio;
             
-            // Расходуем топливо из бака
+            
             tank.DecreaseVolume(tankConsumption);
         }
     }
     
-    /// <summary>
-    /// Обновляет статус топлива и проверяет предупреждения
-    /// </summary>
+    
+    
+    
     private void UpdateFuelStatus()
     {
         float totalFuel = GetTotalFuel();
         float totalMaxFuel = GetTotalMaxFuel();
         float fuelPercentage = totalMaxFuel > 0f ? totalFuel / totalMaxFuel : 0f;
         
-        // Проверяем, изменилось ли топливо
+        
         if (Mathf.Abs(totalFuel - lastTotalFuel) > 0.1f)
         {
             lastTotalFuel = totalFuel;
@@ -201,18 +201,18 @@ public class FuelManager : MonoBehaviour
             
             if (showFuelInfo && Time.frameCount % 60 == 0)
             {
-                Debug.Log($"FuelManager: Топливо: {totalFuel:F1}/{totalMaxFuel:F1} л ({fuelPercentage * 100f:F1}%)");
+                Debug.Log($"FuelManager: топливо: {totalFuel:F1}/{totalMaxFuel:F1} л ({fuelPercentage * 100f:F1}%)");
             }
         }
         
-        // Проверяем предупреждения о низком топливе
+        
         if (enableLowFuelWarning)
         {
             if (fuelPercentage <= criticalFuelThreshold && !criticalFuelWarningShown)
             {
                 criticalFuelWarningShown = true;
                 OnCriticalFuelWarning?.Invoke(fuelPercentage);
-                Debug.LogWarning($"FuelManager: ⚠️ КРИТИЧЕСКИЙ УРОВЕНЬ ТОПЛИВА! Осталось {fuelPercentage * 100f:F1}%");
+                Debug.LogWarning($"FuelManager: ️ КРИТИЧЕСКИЙ УРОВЕНЬ ТОПЛИВА Осталось {fuelPercentage * 100f:F1}%");
             }
             else if (fuelPercentage > criticalFuelThreshold)
             {
@@ -223,7 +223,7 @@ public class FuelManager : MonoBehaviour
             {
                 lowFuelWarningShown = true;
                 OnLowFuelWarning?.Invoke(fuelPercentage);
-                Debug.LogWarning($"FuelManager: ⚠️ Низкий уровень топлива! Осталось {fuelPercentage * 100f:F1}%");
+                Debug.LogWarning($"FuelManager: ️ Низкий уровень топлива Осталось {fuelPercentage * 100f:F1}%");
             }
             else if (fuelPercentage > lowFuelThreshold)
             {
@@ -232,9 +232,9 @@ public class FuelManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Получает общее количество топлива во всех баках
-    /// </summary>
+    
+    
+    
     public float GetTotalFuel()
     {
         float total = 0f;
@@ -248,9 +248,9 @@ public class FuelManager : MonoBehaviour
         return total;
     }
     
-    /// <summary>
-    /// Получает максимальную вместимость всех баков
-    /// </summary>
+    
+    
+    
     public float GetTotalMaxFuel()
     {
         float total = 0f;
@@ -264,9 +264,9 @@ public class FuelManager : MonoBehaviour
         return total;
     }
     
-    /// <summary>
-    /// Получает процент заполнения топливом
-    /// </summary>
+    
+    
+    
     public float GetFuelPercentage()
     {
         float totalMax = GetTotalMaxFuel();
@@ -274,9 +274,9 @@ public class FuelManager : MonoBehaviour
         return GetTotalFuel() / totalMax;
     }
     
-    /// <summary>
-    /// Добавляет бак в список
-    /// </summary>
+    
+    
+    
     public void AddTank(LiquidTank tank)
     {
         if (tank != null && !fuelTanks.Contains(tank))
@@ -285,50 +285,50 @@ public class FuelManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Удаляет бак из списка
-    /// </summary>
+    
+    
+    
     public void RemoveTank(LiquidTank tank)
     {
         fuelTanks.Remove(tank);
     }
     
-    /// <summary>
-    /// Получает список всех баков
-    /// </summary>
+    
+    
+    
     public List<LiquidTank> GetTanks()
     {
         return new List<LiquidTank>(fuelTanks);
     }
     
-    /// <summary>
-    /// Получает базовый расход топлива (л/сек при 100% тяги)
-    /// </summary>
+    
+    
+    
     public float GetBaseConsumptionRate()
     {
         return baseConsumptionRate;
     }
     
-    /// <summary>
-    /// Получает минимальный расход топлива (л/сек при 0% тяги)
-    /// </summary>
+    
+    
+    
     public float GetMinConsumptionRate()
     {
         return minConsumptionRate;
     }
     
-    /// <summary>
-    /// Получает множитель расхода топлива
-    /// </summary>
+    
+    
+    
     public float GetConsumptionMultiplier()
     {
         return consumptionMultiplier;
     }
     
-    /// <summary>
-    /// Рассчитывает скорость расхода топлива для заданной тяги (0-1)
-    /// Публичный метод для использования другими скриптами
-    /// </summary>
+    
+    
+    
+    
     public float GetConsumptionRateForThrust(float thrust)
     {
         float clampedThrust = Mathf.Clamp01(thrust);
